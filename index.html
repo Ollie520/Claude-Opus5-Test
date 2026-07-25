@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rotating Sphere</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #04060c; overflow: hidden; }
+  body {
+    font: 500 13px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #8c9ab4;
+  }
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  #hint {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    color: rgba(190, 205, 230, .45); letter-spacing: .06em; text-transform: uppercase;
+    font-size: 11px; pointer-events: none; user-select: none;
+    transition: opacity .6s ease; opacity: 1;
+  }
+  #hint.hidden { opacity: 0; }
+  #fallback {
+    position: fixed; inset: 0; display: none; place-items: center; text-align: center;
+    padding: 24px; color: #9fb0c8; line-height: 1.7;
+  }
+  #fallback.show { display: grid; }
+</style>
+</head>
+<body>
+  <div id="stage"><canvas id="gl"></canvas></div>
+  <div id="hint">drag to orbit &middot; scroll to zoom &middot; space to pause</div>
+  <div id="fallback"><div>
+    <strong>WebGL unavailable</strong><br>
+    This sphere is rendered on the GPU and needs WebGL, which this browser or device has disabled.
+  </div></div>
+
+<script id="vs" type="x-shader/x-vertex">
+attribute vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+</script>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+
+uniform vec2  uRes;    // drawing buffer size in px
+uniform float uPhase;  // sphere spin, radians
+uniform float uTilt;   // axial tilt, radians
+uniform float uYaw;    // camera orbit
+uniform float uPitch;  // camera elevation
+uniform float uDist;   // camera distance from origin
+
+#define PI 3.14159265359
+#define R  1.0         // sphere radius
+
+/* ---- rotations (GLSL mat3 constructors are column-major) ---- */
+mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0,  0.0, c, s,  0.0, -s, c); }
+mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0.0, -s,  0.0, 1.0, 0.0,  s, 0.0, c); }
+mat3 rotZ(float a) { float c = cos(a), s = sin(a); return mat3(c, s, 0.0,  -s, c, 0.0,  0.0, 0.0, 1.0); }
+
+/* ---- value noise ---- */
+float hash1(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);          // smoothstep interpolant
+  return mix(mix(mix(hash1(i + vec3(0.0, 0.0, 0.0)), hash1(i + vec3(1.0, 0.0, 0.0)), f.x),
+                 mix(hash1(i + vec3(0.0, 1.0, 0.0)), hash1(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+             mix(mix(hash1(i + vec3(0.0, 0.0, 1.0)), hash1(i + vec3(1.0, 0.0, 1.0)), f.x),
+                 mix(hash1(i + vec3(0.0, 1.0, 1.0)), hash1(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z);
+}
+
+float fbm(vec3 p) {
+  float a = 0.5, sum = 0.0, norm = 0.0;
+  for (int i = 0; i < 5; i++) {
+    sum  += a * noise(p);
+    norm += a;
+    p    *= 2.02;
+    a    *= 0.5;
+  }
+  return sum / norm;
+}
+
+/* Surface height in object space. */
+float terrain(vec3 p) { return fbm(p * 2.3); }
+
+/* Tetrahedral gradient of the height field, scaled back to a true derivative. */
+vec3 terrainGrad(vec3 p) {
+  vec2 k = vec2(1.0, -1.0);
+  float e = 0.0035;
+  return (k.xyy * terrain(p + k.xyy * e) + k.yyx * terrain(p + k.yyx * e)
+        + k.yxy * terrain(p + k.yxy * e) + k.xxx * terrain(p + k.xxx * e)) / (4.0 * e);
+}
+
+/* ---- starfield: one star per cell, centre kept clear of cell walls ---- */
+float stars(vec3 rd, float scale, float thresh) {
+  vec3 p = rd * scale;
+  vec3 i = floor(p), f = fract(p);
+  float h = hash1(i);
+  if (h < thresh) return 0.0;
+  vec3 c = 0.25 + 0.5 * vec3(hash1(i + 1.7), hash1(i + 3.3), hash1(i + 5.1));
+  float d = length(f - c);
+  return (1.0 - smoothstep(0.0, 0.11, d)) * (h - thresh) / (1.0 - thresh);
+}
+
+vec3 background(vec3 rd) {
+  vec3 top = vec3(0.011, 0.016, 0.032);
+  vec3 bot = vec3(0.003, 0.004, 0.010);
+  vec3 col = mix(bot, top, smoothstep(-0.8, 0.9, rd.y));
+  col += vec3(0.020, 0.026, 0.048) * pow(max(0.0, 0.55 - abs(rd.y)), 2.0); // faint galactic band
+  float s = stars(rd, 130.0, 0.955) * 1.6 + stars(rd, 46.0, 0.988) * 3.2;
+  return col + vec3(0.85, 0.90, 1.0) * s;
+}
+
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+void main() {
+  /* Normalise by the SHORTER edge so the sphere fits in portrait as well as landscape. */
+  float m  = min(uRes.x, uRes.y);
+  vec2  uv = (gl_FragCoord.xy - 0.5 * uRes) / m;
+
+  // uv spans [-0.5, 0.5] across the short edge, so the half-extent is 0.5 — not 1.0.
+  float focal = 0.5 / tan(radians(40.0) * 0.5);
+  mat3 cam = rotY(uYaw) * rotX(uPitch);
+  vec3 ro = cam * vec3(0.0, 0.0, uDist);
+  vec3 rd = normalize(cam * vec3(uv, -focal));
+
+  vec3 L = normalize(vec3(0.60, 0.42, 0.68));   // key light, fixed in world space
+
+  /* --- exact ray/sphere intersection --- */
+  float tca = dot(-ro, rd);                     // distance along ray to closest approach
+  float d   = sqrt(max(dot(ro, ro) - tca * tca, 0.0));
+
+  /* Analytic edge coverage: one pixel's world footprint at the closest approach. */
+  float pw  = 1.4 * max(tca, 0.0) / (focal * m);
+  float cov = (tca > 0.0) ? 1.0 - smoothstep(R - pw, R + pw, d) : 0.0;
+
+  vec3 col = background(rd);
+
+  /* Atmospheric halo: tight to the limb, and brightest where the limb is sunlit. */
+  if (tca > 0.0) {
+    vec3  limb = normalize(ro + rd * tca);
+    float sunAmt = pow(clamp(dot(limb, L) * 0.5 + 0.5, 0.0, 1.0), 2.5);
+    float halo = pow(clamp(R / max(d, 1e-4), 0.0, 1.0), 22.0);
+    col += mix(vec3(0.10, 0.22, 0.50), vec3(0.45, 0.60, 0.95), sunAmt)
+         * halo * (0.10 + 0.90 * sunAmt) * 0.55 * (1.0 - cov);
+  }
+
+  if (cov > 0.0) {
+    /* Keep the shading ray just inside the limb so the normal stays defined. */
+    float ds  = min(d, R * 0.99995);
+    float t   = tca - sqrt(R * R - ds * ds);
+    vec3  pos = ro + rd * t;
+    vec3  N   = normalize(pos);
+    vec3  V   = -rd;
+
+    /* The sphere's own frame: spin about its axis, then tilt the axis over. */
+    mat3 obj = rotZ(uTilt) * rotY(uPhase);        // object -> world
+    mat3 inv = rotY(-uPhase) * rotZ(-uTilt);      // world -> object (rotations, so this is the inverse)
+    vec3 po  = inv * pos;
+
+    float h = terrain(po);
+
+    /* Bump: bring the height gradient into world space, keep its tangential part. */
+    vec3 g  = obj * terrainGrad(po);
+    vec3 G  = g - dot(g, N) * N;
+    vec3 Nb = normalize(N - 0.055 * G);
+
+    /* Albedo: deep basins, mid shelves, warm highlands, bright poles. */
+    vec3 deep = vec3(0.012, 0.031, 0.070);
+    vec3 mid  = vec3(0.045, 0.128, 0.170);
+    vec3 warm = vec3(0.420, 0.250, 0.105);
+    vec3 alb  = mix(deep, mid, smoothstep(0.34, 0.52, h));
+    alb       = mix(alb, warm, smoothstep(0.54, 0.74, h));
+    float ice = smoothstep(0.78, 0.97, abs(po.y) + 0.18 * h);
+    alb       = mix(alb, vec3(0.80, 0.84, 0.90), ice);
+
+    /* Water is smooth and reflective, land is rough. */
+    float land  = smoothstep(0.44, 0.56, h);
+    float gloss = mix(210.0, 22.0, land);
+    float spInt = mix(0.85, 0.10, land) + 0.30 * ice;
+
+    float ndl  = dot(Nb, L);
+    float diff = clamp(ndl, 0.0, 1.0);
+    float wrap = clamp((ndl + 0.18) / 1.18, 0.0, 1.0);   // softens the terminator
+
+    vec3 H    = normalize(L + V);
+    float f0  = 0.03;
+    float fres = f0 + (1.0 - f0) * pow(1.0 - clamp(dot(H, V), 0.0, 1.0), 5.0);
+    float spec = pow(clamp(dot(Nb, H), 0.0, 1.0), gloss) * step(0.0, ndl) * fres * spInt;
+
+    vec3 sun = vec3(1.00, 0.93, 0.82) * 2.5;
+    vec3 sky = vec3(0.055, 0.085, 0.150);                // hemispheric fill
+    vec3 lit = alb * (sun * mix(diff, wrap, 0.35) + sky * (0.5 + 0.5 * Nb.y));
+    lit += sun * spec * 1.6;
+
+    /* Rim light: cool scatter along the limb, strongest where the sun grazes. */
+    float rim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.5);
+    lit += vec3(0.22, 0.42, 0.80) * rim * (0.28 + 0.72 * clamp(ndl + 0.35, 0.0, 1.0));
+
+    col = mix(col, lit, cov);
+  }
+
+  col = aces(col);
+  gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);   // linear -> sRGB
+}
+</script>
+
+<script>
+(function () {
+  "use strict";
+
+  var canvas   = document.getElementById("gl");
+  var hint     = document.getElementById("hint");
+  var fallback = document.getElementById("fallback");
+
+  function fail() {
+    canvas.style.display = "none";
+    hint.style.display = "none";
+    fallback.classList.add("show");
+  }
+
+  var opts = { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: "high-performance" };
+  var gl = canvas.getContext("webgl", opts) || canvas.getContext("experimental-webgl", opts);
+  if (!gl) { fail(); return; }
+
+  /* ---------------- program ---------------- */
+
+  function compile(type, src) {
+    var sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(sh));
+      gl.deleteShader(sh);
+      return null;
+    }
+    return sh;
+  }
+
+  var program = null, loc = null, buffer = null;
+
+  function build() {
+    var vs = compile(gl.VERTEX_SHADER,   document.getElementById("vs").textContent);
+    var fs = compile(gl.FRAGMENT_SHADER, document.getElementById("fs").textContent);
+    if (!vs || !fs) return false;
+
+    program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.bindAttribLocation(program, 0, "aPos");
+    gl.linkProgram(program);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(program));
+      return false;
+    }
+
+    gl.useProgram(program);
+    loc = {
+      res:   gl.getUniformLocation(program, "uRes"),
+      phase: gl.getUniformLocation(program, "uPhase"),
+      tilt:  gl.getUniformLocation(program, "uTilt"),
+      yaw:   gl.getUniformLocation(program, "uYaw"),
+      pitch: gl.getUniformLocation(program, "uPitch"),
+      dist:  gl.getUniformLocation(program, "uDist")
+    };
+
+    // One oversized triangle covers the viewport with no seam down the diagonal.
+    buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    return true;
+  }
+
+  if (!build()) { fail(); return; }
+
+  /* ---------------- state ---------------- */
+
+  var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var state = {
+    phase: 0,
+    speed: reduced ? 0.045 : 0.22,   // radians / second
+    tilt:  0.36,
+    yaw:   0,
+    pitch: 0.16,
+    dist:  4.2,
+    paused: false
+  };
+
+  // The shader frames a 40 degree FOV across the short edge, so the sphere exactly
+  // fills the viewport at 1 / sin(20 deg) = 2.92. Closer than that and you are just
+  // magnifying noise, so that is where zoom stops.
+  var MIN_DIST = 2.95, MAX_DIST = 12.0, MAX_PITCH = Math.PI / 2 - 0.05;
+
+  /* ---------------- sizing ---------------- */
+
+  var width = 0, height = 0;
+
+  function resize() {
+    // Cap the pixel ratio: this shader is fill-rate bound, and past 2x the gain is invisible.
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(1, Math.round(canvas.clientWidth  * dpr));
+    var h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    var max = gl.getParameter(gl.MAX_VIEWPORT_DIMS) || [4096, 4096];
+    w = Math.min(w, max[0]);
+    h = Math.min(h, max[1]);
+    if (w === width && h === height) return;
+    width = w; height = h;
+    canvas.width = w; canvas.height = h;
+    gl.viewport(0, 0, w, h);
+  }
+
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+  window.addEventListener("resize", resize);
+
+  /* ---------------- input ---------------- */
+
+  var dragging = false, pointerId = null, lastX = 0, lastY = 0;
+
+  function dismissHint() {
+    hint.classList.add("hidden");
+  }
+
+  canvas.addEventListener("pointerdown", function (e) {
+    if (dragging) return;
+    dragging = true;
+    pointerId = e.pointerId;
+    lastX = e.clientX; lastY = e.clientY;
+    canvas.setPointerCapture(pointerId);
+    canvas.classList.add("dragging");
+    dismissHint();
+  });
+
+  canvas.addEventListener("pointermove", function (e) {
+    if (!dragging || e.pointerId !== pointerId) return;
+    var dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    // Scale by the short edge so a drag feels the same on any screen.
+    var k = 2.6 / Math.max(1, Math.min(canvas.clientWidth, canvas.clientHeight));
+    state.yaw   -= dx * k;
+    state.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, state.pitch + dy * k));
+  });
+
+  function endDrag(e) {
+    if (!dragging || (e && e.pointerId !== pointerId)) return;
+    dragging = false;
+    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+    pointerId = null;
+    canvas.classList.remove("dragging");
+  }
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+
+  canvas.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    // Normalise line- and page-mode deltas so trackpads and mice agree.
+    var unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
+    state.dist = Math.max(MIN_DIST, Math.min(MAX_DIST, state.dist * Math.exp(e.deltaY * unit * 0.0012)));
+    dismissHint();
+  }, { passive: false });
+
+  window.addEventListener("keydown", function (e) {
+    if (e.code === "Space" || e.key === " ") {
+      e.preventDefault();
+      state.paused = !state.paused;
+      dismissHint();
+    }
+  });
+
+  /* ---------------- context loss ---------------- */
+
+  var lost = false;
+
+  canvas.addEventListener("webglcontextlost", function (e) {
+    e.preventDefault();
+    lost = true;
+  });
+
+  canvas.addEventListener("webglcontextrestored", function () {
+    width = height = 0;          // force a viewport refresh
+    if (build()) { lost = false; resize(); }
+    else fail();
+  });
+
+  /* ---------------- loop ---------------- */
+
+  var last = 0;
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (lost) { last = now; return; }
+
+    // Clamp dt so a backgrounded tab doesn't come back to a huge jump.
+    var dt = last ? Math.min((now - last) / 1000, 0.1) : 0;
+    last = now;
+
+    resize();
+    if (!state.paused) {
+      state.phase += state.speed * dt;
+      if (state.phase > Math.PI * 2) state.phase -= Math.PI * 2;   // keep float precision tight
+    }
+
+    gl.uniform2f(loc.res, width, height);
+    gl.uniform1f(loc.phase, state.phase);
+    gl.uniform1f(loc.tilt,  state.tilt);
+    gl.uniform1f(loc.yaw,   state.yaw);
+    gl.uniform1f(loc.pitch, state.pitch);
+    gl.uniform1f(loc.dist,  state.dist);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  resize();
+  requestAnimationFrame(frame);
+  setTimeout(dismissHint, 6000);
+})();
+</script>
+</body>
+</html>
