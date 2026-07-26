@@ -21,13 +21,44 @@ solves the ray/sphere intersection in closed form, which means:
 - Ray/sphere intersection, with the shading ray held just inside the limb so the normal
   stays well defined at grazing angles.
 - Height field from 5-octave value-noise fBm; the surface normal is perturbed by the
-  tangential part of that field's tetrahedrally-sampled gradient.
-- Blinn-Phong specular with a Schlick-Fresnel term, roughness driven by terrain height, so
-  basins read as smooth water and highlands as rough land.
-- Hemispheric ambient fill, a wrapped diffuse term to soften the terminator, and a cool rim
-  light along the limb.
-- Sun-directional atmospheric halo — brightest where the limb is actually lit.
-- Procedural starfield, ACES tone mapping, and a linear-to-sRGB transfer at the end.
+  tangential part of that field's gradient. Oceans stay geometrically flat — relief is
+  applied to land only.
+- Biomes chosen from height, latitude, elevation and a cheap moisture octave: wet tropics
+  forest over, dry ones turn to desert, high latitudes go to tundra, snow and sea ice cap
+  the poles, and anything tall enough becomes bare rock. Ocean darkens with depth.
+  Albedos are linear values in roughly the range real surfaces occupy — ocean near 0.03,
+  forest under 0.1, desert around 0.3, snow around 0.6.
+- A separate cloud deck on its own slightly faster rotation, so weather drifts over the
+  terrain instead of being painted onto it. Latitude is squashed before sampling, which
+  stretches the noise into east-west bands the way rotation organises real weather. A
+  single sample stepped along the light direction serves as both the deck's self-shadowing
+  and the shadow it casts on the ground.
+- Blinn-Phong specular with a Schlick-Fresnel term. Water is sharp enough to give a small
+  sun glint, land is nearly matte, and cloud cover blocks the glint underneath it.
+- Wrapped diffuse to let air scatter light into the terminator, plus an air-column term
+  that goes blue where lit and warm right at the day/night line.
+- Procedural starfield with colour by temperature, ACES tone mapping, and a
+  linear-to-sRGB transfer at the end.
+
+## The Sun
+
+The Sun is drawn at its true angular size — a disc of 0.266° radius, which at this field of
+view is only a handful of pixels — with limb darkening across it and two scales of glare
+around it. What sells it is the glare, not the disc. The angle to it is computed in chord
+form, `2·asin(|rd - L| / 2)`, because `acos(dot(...))` loses nearly all its precision at the
+small angles that matter here.
+
+It is a real object in the scene at a fixed world direction, so the planet occludes it and
+you have to orbit to bring it into frame. **That is a physical constraint, not an
+oversight:** a lit planet and the Sun cannot share the frame. Seeing the Sun means looking
+along the light, which is the same thing as looking at the planet's night side. So the
+default view is a well-lit gibbous with the Sun behind you, and orbiting round trades the
+surface for a backlit planet, a dark disc ringed by forward-scattered light. Both are the
+same scene from different sides.
+
+Atmospheric scattering is what makes that second view work. Side-on, the shell scatters
+blue; looking into the Sun through it, forward scattering lights the entire limb into a
+bright ring.
 
 ## Controls
 
@@ -62,7 +93,9 @@ creeping down over several seconds. A dead band around the target stops it oscil
 
 The fragment shader's cost is dominated by fBm evaluations, so the height gradient uses
 forward differences that reuse the centre sample the shader already computed — three taps
-per pixel rather than the four a tetrahedral stencil needs.
+per pixel rather than the four a tetrahedral stencil needs. The cloud deck runs at four
+octaves rather than five, and its lighting reuses a single shadow sample for both the
+deck's self-shadowing and the shadow cast on the ground.
 
 Output is dithered by less than one 8-bit level before quantisation. Without it the dark
 background gradient bands visibly; the pattern is fixed per pixel, so it never shimmers.

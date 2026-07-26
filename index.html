@@ -89,13 +89,15 @@ precision highp float;
 
 uniform vec2  uRes;    // drawing buffer size in px
 uniform float uPhase;  // sphere spin, radians
+uniform float uCloud;  // cloud deck spin, radians (drifts ahead of the surface)
 uniform float uTilt;   // axial tilt, radians
 uniform float uYaw;    // camera orbit
 uniform float uPitch;  // camera elevation
 uniform float uDist;   // camera distance from origin
 
 #define PI 3.14159265359
-#define R  1.0         // sphere radius
+#define R  1.0            // sphere radius
+#define SUN_ANG 0.00465   // solar angular radius in radians (0.266 degrees)
 
 /* ---- rotations (GLSL mat3 constructors are column-major) ---- */
 mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0,  0.0, c, s,  0.0, -s, c); }
@@ -130,8 +132,24 @@ float fbm(vec3 p) {
   return sum / norm;
 }
 
+/* Cheaper fBm for the cloud deck, which does not need the finest octave. */
+float fbm4(vec3 p) {
+  float a = 0.5, sum = 0.0, norm = 0.0;
+  for (int i = 0; i < 4; i++) {
+    sum  += a * noise(p);
+    norm += a;
+    p    *= 2.06;
+    a    *= 0.5;
+  }
+  return sum / norm;
+}
+
 /* Surface height in object space. */
 float terrain(vec3 p) { return fbm(p * 2.3); }
+
+/* Cloud density. Squashing latitude stretches the noise into east-west bands, the way
+   rotation organises real weather systems. */
+float clouds(vec3 p) { return fbm4(vec3(p.x, p.y * 2.6, p.z) * 2.7); }
 
 /* Gradient of the height field by forward differences. Reusing the centre sample the
    caller already has costs three taps instead of the four a tetrahedral stencil needs. */
@@ -153,13 +171,38 @@ float stars(vec3 rd, float scale, float thresh) {
   return (1.0 - smoothstep(0.0, 0.11, d)) * (h - thresh) / (1.0 - thresh);
 }
 
+/* Hotter stars run blue, cooler ones orange. */
+vec3 starTint(vec3 rd, float scale) {
+  float t = hash1(floor(rd * scale) + 9.13);
+  return mix(vec3(1.00, 0.78, 0.56), vec3(0.74, 0.84, 1.00), smoothstep(0.15, 0.85, t));
+}
+
 vec3 background(vec3 rd) {
   vec3 top = vec3(0.011, 0.016, 0.032);
   vec3 bot = vec3(0.003, 0.004, 0.010);
   vec3 col = mix(bot, top, smoothstep(-0.8, 0.9, rd.y));
   col += vec3(0.020, 0.026, 0.048) * pow(max(0.0, 0.55 - abs(rd.y)), 2.0); // faint galactic band
-  float s = stars(rd, 130.0, 0.955) * 1.6 + stars(rd, 46.0, 0.988) * 3.2;
-  return col + vec3(0.85, 0.90, 1.0) * s;
+  col += starTint(rd, 130.0) * stars(rd, 130.0, 0.955) * 1.6;
+  col += starTint(rd,  46.0) * stars(rd,  46.0, 0.988) * 3.2;
+  return col;
+}
+
+/* The Sun, at its true angular size: a 0.266 degree radius disc. That is only a few
+   pixels across, so what actually sells it is the glare wrapped around it. `apx` is the
+   angular width of one pixel, used to anti-alias the limb. */
+vec3 sun(vec3 rd, vec3 L, float apx) {
+  // Chord form of the angle between two unit vectors — stable at the small angles that
+  // matter here, unlike acos(dot(...)) which loses all its precision near 1.
+  float ang = 2.0 * asin(clamp(length(rd - L) * 0.5, 0.0, 1.0));
+
+  float disc = 1.0 - smoothstep(SUN_ANG - apx, SUN_ANG + apx, ang);
+  // Limb darkening: the Sun's edge is dimmer than its centre.
+  float r = clamp(ang / SUN_ANG, 0.0, 1.0);
+  vec3 col = vec3(1.00, 0.97, 0.92) * disc * (0.55 + 0.45 * sqrt(max(0.0, 1.0 - r * r))) * 110.0;
+
+  col += vec3(1.00, 0.88, 0.70) * exp(-ang * 60.0) * 1.30;   // tight glare
+  col += vec3(0.60, 0.72, 1.00) * exp(-ang *  9.0) * 0.09;   // broad, cooler scatter
+  return col;
 }
 
 vec3 aces(vec3 x) {
@@ -187,15 +230,20 @@ void main() {
   float pw  = 1.4 * max(tca, 0.0) / (focal * m);
   float cov = (tca > 0.0) ? 1.0 - smoothstep(R - pw, R + pw, d) : 0.0;
 
-  vec3 col = background(rd);
+  float apx = 1.0 / (focal * m);                // angular width of one pixel, radians
+  vec3  col = background(rd) + sun(rd, L, apx);
 
-  /* Atmospheric halo: tight to the limb, and brightest where the limb is sunlit. */
+  vec3 sunCol = vec3(1.00, 0.96, 0.90) * 3.4;   // incoming sunlight, linear
+
+  /* Atmospheric shell seen against space. Side-on it scatters blue; looking into the Sun
+     through it, forward scattering lights the whole limb into a bright ring. */
   if (tca > 0.0) {
-    vec3  limb = normalize(ro + rd * tca);
-    float sunAmt = pow(clamp(dot(limb, L) * 0.5 + 0.5, 0.0, 1.0), 2.5);
-    float halo = pow(clamp(R / max(d, 1e-4), 0.0, 1.0), 22.0);
-    col += mix(vec3(0.10, 0.22, 0.50), vec3(0.45, 0.60, 0.95), sunAmt)
-         * halo * (0.10 + 0.90 * sunAmt) * 0.55 * (1.0 - cov);
+    vec3  limb   = normalize(ro + rd * tca);
+    float sunAmt = pow(clamp(dot(limb, L) * 0.5 + 0.5, 0.0, 1.0), 2.0);
+    float fwd    = pow(clamp(dot(rd, L), 0.0, 1.0), 4.0);      // backlit forward scatter
+    float shell  = pow(clamp(R / max(d, 1e-4), 0.0, 1.0), 26.0);
+    vec3  tint   = mix(vec3(0.10, 0.24, 0.55), vec3(0.85, 0.88, 1.00), fwd);
+    col += tint * shell * (0.30 * sunAmt + 1.15 * fwd) * (1.0 - cov);
   }
 
   if (cov > 0.0) {
@@ -211,44 +259,79 @@ void main() {
     mat3 inv = rotY(-uPhase) * rotZ(-uTilt);      // world -> object (rotations, so this is the inverse)
     vec3 po  = inv * pos;
 
-    float h = terrain(po);
+    float h    = terrain(po);
+    float sea  = 0.50;
+    float land = smoothstep(sea, sea + 0.015, h);
 
-    /* Bump: bring the height gradient into world space, keep its tangential part. */
+    /* Bump: bring the height gradient into world space, keep its tangential part.
+       Oceans stay geometrically flat — relief belongs to the land only. */
     vec3 g  = obj * terrainGrad(po, h);
     vec3 G  = g - dot(g, N) * N;
-    vec3 Nb = normalize(N - 0.055 * G);
+    vec3 Nb = normalize(N - 0.055 * G * land);
 
-    /* Albedo: deep basins, mid shelves, warm highlands, bright poles. */
-    vec3 deep = vec3(0.012, 0.031, 0.070);
-    vec3 mid  = vec3(0.045, 0.128, 0.170);
-    vec3 warm = vec3(0.420, 0.250, 0.105);
-    vec3 alb  = mix(deep, mid, smoothstep(0.34, 0.52, h));
-    alb       = mix(alb, warm, smoothstep(0.54, 0.74, h));
-    float ice = smoothstep(0.78, 0.97, abs(po.y) + 0.18 * h);
-    alb       = mix(alb, vec3(0.80, 0.84, 0.90), ice);
+    float lat  = abs(po.y);                                   // 0 at equator, 1 at a pole
+    float elev = clamp((h - sea) / 0.28, 0.0, 1.0);
+    float wet  = noise(po * 3.7 + 11.3);                      // one cheap octave of moisture
 
-    /* Water is smooth and reflective, land is rough. */
-    float land  = smoothstep(0.44, 0.56, h);
-    float gloss = mix(210.0, 22.0, land);
-    float spInt = mix(0.85, 0.10, land) + 0.30 * ice;
+    /* Water darkens with depth. Real ocean albedo is very low. */
+    float depth = clamp((sea - h) / 0.20, 0.0, 1.0);
+    vec3  water = mix(vec3(0.016, 0.048, 0.105), vec3(0.002, 0.007, 0.030), depth);
+
+    /* Biomes: wet tropics forest over, dry ones turn to desert, high latitudes to tundra,
+       and anything tall enough becomes bare rock. */
+    vec3 ground = mix(vec3(0.230, 0.170, 0.090), vec3(0.030, 0.062, 0.020),
+                      smoothstep(0.38, 0.62, wet));
+    ground = mix(ground, vec3(0.075, 0.098, 0.032), smoothstep(0.28, 0.55, lat) * 0.55);
+    ground = mix(ground, vec3(0.115, 0.110, 0.095), smoothstep(0.58, 0.78, lat));
+    ground = mix(ground, vec3(0.080, 0.072, 0.062), smoothstep(0.50, 0.92, elev));
+
+    vec3 alb = mix(water, ground, land);
+
+    float snow = smoothstep(0.70, 0.92, lat + 0.30 * elev) * land;
+    alb = mix(alb, vec3(0.60, 0.64, 0.70), snow);
+    float ice = smoothstep(0.88, 0.97, lat) * (1.0 - land);   // polar sea ice
+    alb = mix(alb, vec3(0.52, 0.57, 0.64), ice);
+
+    /* --- cloud deck, on its own slightly faster rotation --- */
+    mat3  invC = rotY(-uCloud) * rotZ(-uTilt);
+    vec3  pc   = invC * pos;
+    float cov2 = smoothstep(0.53, 0.73, clouds(pc));
+    /* One step along the light direction through the deck: doubles as the deck's own
+       self-shadowing and as the shadow it casts on the ground below. */
+    float cShadow = smoothstep(0.53, 0.73, clouds(pc + (invC * L) * 0.030));
 
     float ndl  = dot(Nb, L);
+    float ndlG = dot(N, L);
     float diff = clamp(ndl, 0.0, 1.0);
-    float wrap = clamp((ndl + 0.18) / 1.18, 0.0, 1.0);   // softens the terminator
+    float wrap = clamp((ndlG + 0.10) / 1.10, 0.0, 1.0);   // air scatters into the terminator
+    float shade = mix(diff, wrap, 0.25);
 
-    vec3 H    = normalize(L + V);
-    float f0  = 0.03;
+    /* Skylight is sunlight scattered by the air, so it has to fall off with the sun as
+       well. Leaving it constant lights the night side as brightly as noon. */
+    vec3  skyFill = vec3(0.045, 0.070, 0.130);
+    float skyAmt  = 0.04 + 0.96 * wrap;
+    float groundShadow = 1.0 - 0.55 * cShadow * clamp(ndlG * 3.0, 0.0, 1.0);
+    vec3  lit = alb * (sunCol * shade * groundShadow
+                       + skyFill * (0.55 + 0.45 * Nb.y) * skyAmt);
+
+    /* Specular: a tight sun glint on water, almost nothing on land, blocked by cloud. */
+    vec3  H    = normalize(L + V);
+    float f0   = 0.02;
     float fres = f0 + (1.0 - f0) * pow(1.0 - clamp(dot(H, V), 0.0, 1.0), 5.0);
-    float spec = pow(clamp(dot(Nb, H), 0.0, 1.0), gloss) * step(0.0, ndl) * fres * spInt;
+    float spec = pow(clamp(dot(Nb, H), 0.0, 1.0), mix(900.0, 24.0, land)) * step(0.0, ndl) * fres;
+    lit += sunCol * spec * ((1.0 - land) * 3.0 + ice * 0.9 + land * 0.05) * (1.0 - cov2);
 
-    vec3 sun = vec3(1.00, 0.93, 0.82) * 2.5;
-    vec3 sky = vec3(0.055, 0.085, 0.150);                // hemispheric fill
-    vec3 lit = alb * (sun * mix(diff, wrap, 0.35) + sky * (0.5 + 0.5 * Nb.y));
-    lit += sun * spec * 1.6;
+    /* Clouds sit above the surface and below the top of the atmosphere. */
+    vec3 cloudLit = vec3(0.90, 0.92, 0.95)
+                  * (sunCol * mix(diff, wrap, 0.45) * (1.0 - 0.55 * cShadow)
+                     + skyFill * 1.2 * skyAmt);
+    lit = mix(lit, cloudLit, cov2 * 0.90);
 
-    /* Rim light: cool scatter along the limb, strongest where the sun grazes. */
-    float rim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.5);
-    lit += vec3(0.22, 0.42, 0.80) * rim * (0.28 + 0.72 * clamp(ndl + 0.35, 0.0, 1.0));
+    /* Air column, thickest at the limb: blue where lit, warm right at the terminator. */
+    float limbT = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
+    float dayAmt = clamp(ndlG * 0.5 + 0.5, 0.0, 1.0);
+    lit += vec3(0.20, 0.42, 0.90) * limbT * pow(dayAmt, 1.6) * 0.55;
+    lit += vec3(0.62, 0.26, 0.10) * limbT * exp(-abs(ndlG) * 16.0) * 0.32;
 
     col = mix(col, lit, cov);
   }
@@ -320,6 +403,7 @@ void main() {
     loc = {
       res:   gl.getUniformLocation(program, "uRes"),
       phase: gl.getUniformLocation(program, "uPhase"),
+      cloud: gl.getUniformLocation(program, "uCloud"),
       tilt:  gl.getUniformLocation(program, "uTilt"),
       yaw:   gl.getUniformLocation(program, "uYaw"),
       pitch: gl.getUniformLocation(program, "uPitch"),
@@ -351,7 +435,7 @@ void main() {
   var EASE     = 14.0;                    // camera catch-up rate
   var FRICTION = 3.6;                     // flick decay rate
 
-  var phase = 0, tilt = 0.36, paused = false;
+  var phase = 0, cloudPhase = 0, tilt = 0.36, paused = false;
 
   // Each camera value is a target the user drives, plus a rendered value that chases it.
   // Everything the user touches moves the target, so the view is always eased, never snapped.
@@ -573,7 +657,10 @@ void main() {
 
     if (!paused) {
       phase += SPIN * dt;
+      // The deck runs a little ahead of the ground, so weather drifts over the terrain.
+      cloudPhase += SPIN * 1.18 * dt;
       if (phase > Math.PI * 2) phase -= Math.PI * 2;   // keep float precision tight
+      if (cloudPhase > Math.PI * 2) cloudPhase -= Math.PI * 2;
     }
 
     // Coast after a flick, shedding speed at a fixed rate per second.
@@ -595,6 +682,7 @@ void main() {
 
     gl.uniform2f(loc.res, width, height);
     gl.uniform1f(loc.phase, phase);
+    gl.uniform1f(loc.cloud, cloudPhase);
     gl.uniform1f(loc.tilt,  tilt);
     gl.uniform1f(loc.yaw,   cam.yaw);
     gl.uniform1f(loc.pitch, cam.pitch);
