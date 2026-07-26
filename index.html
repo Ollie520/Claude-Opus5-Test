@@ -7,21 +7,55 @@
 <style>
   :root { color-scheme: dark; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; background: #04060c; overflow: hidden; }
+  html, body {
+    height: 100%; background: #04060c; overflow: hidden;
+    overscroll-behavior: none;                 /* no rubber-banding behind the canvas */
+  }
   body {
     font: 500 13px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     color: #8c9ab4;
+    -webkit-tap-highlight-color: transparent;
   }
   #stage { position: fixed; inset: 0; }
   canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
   canvas.dragging { cursor: grabbing; }
+
+  /* Controls sit above the home indicator on phones. */
+  #ui {
+    position: fixed; left: 0; right: 0;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    pointer-events: none;
+  }
+  .btn {
+    pointer-events: auto;
+    width: 46px; height: 46px; border-radius: 50%;
+    display: grid; place-items: center;
+    border: 1px solid rgba(150, 180, 220, .22);
+    background: rgba(12, 20, 36, .55);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    color: #cfe0f5; cursor: pointer;
+    touch-action: manipulation; user-select: none; -webkit-user-select: none;
+    transition: background .2s ease, border-color .2s ease, transform .12s ease;
+  }
+  .btn:hover { background: rgba(20, 32, 54, .78); border-color: rgba(150, 180, 220, .38); }
+  .btn:active { transform: scale(.93); }
+  .btn:focus-visible { outline: 2px solid #6ea8ff; outline-offset: 3px; }
+  .btn svg { width: 17px; height: 17px; fill: currentColor; display: block; }
+  .ico-play { display: none; }
+  .btn.paused .ico-play  { display: block; }
+  .btn.paused .ico-pause { display: none; }
+
   #hint {
-    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
     color: rgba(190, 205, 230, .45); letter-spacing: .06em; text-transform: uppercase;
-    font-size: 11px; pointer-events: none; user-select: none;
+    font-size: 11px; text-align: center; padding: 0 18px;
+    pointer-events: none; user-select: none;
     transition: opacity .6s ease; opacity: 1;
   }
   #hint.hidden { opacity: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .btn { transition: none; }
+  }
   #fallback {
     position: fixed; inset: 0; display: none; place-items: center; text-align: center;
     padding: 24px; color: #9fb0c8; line-height: 1.7;
@@ -31,7 +65,15 @@
 </head>
 <body>
   <div id="stage"><canvas id="gl"></canvas></div>
-  <div id="hint">drag to orbit &middot; scroll to zoom &middot; space to pause</div>
+  <div id="ui">
+    <button id="toggle" class="btn" type="button" aria-label="Pause rotation" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path class="ico-pause" d="M9 5h3.2v14H9zM15.8 5H19v14h-3.2z"/>
+        <path class="ico-play" d="M9 5l10 7-10 7z"/>
+      </svg>
+    </button>
+    <div id="hint">drag to orbit &middot; scroll to zoom &middot; space to pause</div>
+  </div>
   <div id="fallback"><div>
     <strong>WebGL unavailable</strong><br>
     This sphere is rendered on the GPU and needs WebGL, which this browser or device has disabled.
@@ -91,12 +133,13 @@ float fbm(vec3 p) {
 /* Surface height in object space. */
 float terrain(vec3 p) { return fbm(p * 2.3); }
 
-/* Tetrahedral gradient of the height field, scaled back to a true derivative. */
-vec3 terrainGrad(vec3 p) {
-  vec2 k = vec2(1.0, -1.0);
+/* Gradient of the height field by forward differences. Reusing the centre sample the
+   caller already has costs three taps instead of the four a tetrahedral stencil needs. */
+vec3 terrainGrad(vec3 p, float centre) {
   float e = 0.0035;
-  return (k.xyy * terrain(p + k.xyy * e) + k.yyx * terrain(p + k.yyx * e)
-        + k.yxy * terrain(p + k.yxy * e) + k.xxx * terrain(p + k.xxx * e)) / (4.0 * e);
+  return vec3(terrain(p + vec3(e, 0.0, 0.0)) - centre,
+              terrain(p + vec3(0.0, e, 0.0)) - centre,
+              terrain(p + vec3(0.0, 0.0, e)) - centre) / e;
 }
 
 /* ---- starfield: one star per cell, centre kept clear of cell walls ---- */
@@ -171,7 +214,7 @@ void main() {
     float h = terrain(po);
 
     /* Bump: bring the height gradient into world space, keep its tangential part. */
-    vec3 g  = obj * terrainGrad(po);
+    vec3 g  = obj * terrainGrad(po, h);
     vec3 G  = g - dot(g, N) * N;
     vec3 Nb = normalize(N - 0.055 * G);
 
@@ -211,7 +254,13 @@ void main() {
   }
 
   col = aces(col);
-  gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);   // linear -> sRGB
+  col = pow(col, vec3(1.0 / 2.2));                       // linear -> sRGB
+
+  /* A dark gradient across an 8-bit framebuffer bands badly. Dither by less than one
+     level before it quantises. The pattern is fixed per pixel, so it never shimmers. */
+  col += (hash1(vec3(gl_FragCoord.xy, 0.5)) - 0.5) / 255.0;
+
+  gl_FragColor = vec4(col, 1.0);
 }
 </script>
 
@@ -221,11 +270,12 @@ void main() {
 
   var canvas   = document.getElementById("gl");
   var hint     = document.getElementById("hint");
+  var toggle   = document.getElementById("toggle");
   var fallback = document.getElementById("fallback");
 
   function fail() {
     canvas.style.display = "none";
-    hint.style.display = "none";
+    document.getElementById("ui").style.display = "none";
     fallback.classList.add("show");
   }
 
@@ -290,29 +340,37 @@ void main() {
   /* ---------------- state ---------------- */
 
   var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  var state = {
-    phase: 0,
-    speed: reduced ? 0.045 : 0.22,   // radians / second
-    tilt:  0.36,
-    yaw:   0,
-    pitch: 0.16,
-    dist:  4.2,
-    paused: false
-  };
+  var coarse  = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
   // The shader frames a 40 degree FOV across the short edge, so the sphere exactly
   // fills the viewport at 1 / sin(20 deg) = 2.92. Closer than that and you are just
   // magnifying noise, so that is where zoom stops.
   var MIN_DIST = 2.95, MAX_DIST = 12.0, MAX_PITCH = Math.PI / 2 - 0.05;
 
+  var SPIN     = reduced ? 0.045 : 0.22;  // rad/s of sphere rotation
+  var EASE     = 14.0;                    // camera catch-up rate
+  var FRICTION = 3.6;                     // flick decay rate
+
+  var phase = 0, tilt = 0.36, paused = false;
+
+  // Each camera value is a target the user drives, plus a rendered value that chases it.
+  // Everything the user touches moves the target, so the view is always eased, never snapped.
+  var cam = {
+    yaw: 0,    tYaw: 0,    vYaw: 0,
+    pitch: .16, tPitch: .16, vPitch: 0,
+    dist: 4.2,  tDist: 4.2
+  };
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
   /* ---------------- sizing ---------------- */
 
   var width = 0, height = 0;
+  var quality = 1.0;   // resolution scale, driven by measured frame time
 
   function resize() {
     // Cap the pixel ratio: this shader is fill-rate bound, and past 2x the gain is invisible.
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var dpr = Math.min(window.devicePixelRatio || 1, 2) * quality;
     var w = Math.max(1, Math.round(canvas.clientWidth  * dpr));
     var h = Math.max(1, Math.round(canvas.clientHeight * dpr));
     var max = gl.getParameter(gl.MAX_VIEWPORT_DIMS) || [4096, 4096];
@@ -327,59 +385,161 @@ void main() {
   if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
   window.addEventListener("resize", resize);
 
-  /* ---------------- input ---------------- */
+  /* Hold the framerate by trading resolution for fill rate. The canvas is stretched back
+     to full size by CSS, so dropping scale costs sharpness rather than smoothness. */
+  var accTime = 0, accFrames = 0, settle = 1.0;
+  var TARGET = 1 / 57;   // aim a little inside a 60Hz budget
 
-  var dragging = false, pointerId = null, lastX = 0, lastY = 0;
+  function adapt(dt) {
+    if (settle > 0) { settle -= dt; return; }
+    accTime += dt; accFrames++;
+    if (accFrames < 24) return;
+    var avg = accTime / accFrames;
+    accTime = 0; accFrames = 0;
 
-  function dismissHint() {
-    hint.classList.add("hidden");
+    // Dead band: only act on a clear miss, so we don't thrash around the target.
+    if (avg < 1 / 48 && avg > 1 / 58) return;
+    if (avg <= 1 / 58 && quality >= 1) return;
+    if (avg >= 1 / 48 && quality <= 0.6) return;
+
+    // Fill cost scales with pixel count, which scales with quality squared — so aiming at
+    // the target takes sqrt of the time ratio. Capped per step to stay stable.
+    var factor = Math.sqrt(TARGET / avg);
+    factor = clamp(factor, 0.65, 1.3);
+    var next = clamp(quality * factor, 0.6, 1.0);
+
+    if (Math.abs(next - quality) > 0.02) {
+      quality = next;
+      settle = 0.5;      // let the new size take effect before measuring again
+      resize();
+    }
   }
 
+  /* ---------------- input ---------------- */
+
+  // Live pointers, keyed by pointerId. One down means orbit, two means pinch-zoom.
+  // The map is the single source of truth for how many fingers are on the glass.
+  var pointers = Object.create(null);
+  var dragging = false, lastMoveT = 0;
+  var pinchSpan = 0, pinchDist0 = 0;
+
+  function pointerList() {
+    var out = [];
+    for (var id in pointers) out.push(pointers[id]);
+    return out;
+  }
+
+  function orbitScale() {
+    // Scale by the short edge so a drag feels the same on any screen.
+    return 2.6 / Math.max(1, Math.min(canvas.clientWidth, canvas.clientHeight));
+  }
+
+  function beginPinch() {
+    var p = pointerList();
+    if (p.length < 2) return;
+    pinchSpan = Math.max(1, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y));
+    pinchDist0 = cam.tDist;
+  }
+
+  function dismissHint() { hint.classList.add("hidden"); }
+
   canvas.addEventListener("pointerdown", function (e) {
-    if (dragging) return;
-    dragging = true;
-    pointerId = e.pointerId;
-    lastX = e.clientX; lastY = e.clientY;
-    canvas.setPointerCapture(pointerId);
-    canvas.classList.add("dragging");
+    canvas.setPointerCapture(e.pointerId);
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     dismissHint();
+
+    var n = pointerList().length;
+    if (n === 1) {
+      dragging = true;
+      lastMoveT = performance.now();
+      cam.vYaw = cam.vPitch = 0;          // grabbing it kills any spin still in flight
+      canvas.classList.add("dragging");
+    } else if (n === 2) {
+      dragging = false;                   // a second finger switches modes to pinch
+      canvas.classList.remove("dragging");
+      beginPinch();
+    }
   });
 
   canvas.addEventListener("pointermove", function (e) {
-    if (!dragging || e.pointerId !== pointerId) return;
-    var dx = e.clientX - lastX, dy = e.clientY - lastY;
-    lastX = e.clientX; lastY = e.clientY;
-    // Scale by the short edge so a drag feels the same on any screen.
-    var k = 2.6 / Math.max(1, Math.min(canvas.clientWidth, canvas.clientHeight));
-    state.yaw   -= dx * k;
-    state.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, state.pitch + dy * k));
+    var p = pointers[e.pointerId];
+    if (!p) return;
+    var dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+
+    var list = pointerList();
+    if (list.length >= 2) {
+      var span = Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y);
+      if (span > 0) cam.tDist = clamp(pinchDist0 * (pinchSpan / span), MIN_DIST, MAX_DIST);
+      return;
+    }
+    if (!dragging) return;
+
+    var k = orbitScale();
+    cam.tYaw   -= dx * k;
+    cam.tPitch  = clamp(cam.tPitch + dy * k, -MAX_PITCH, MAX_PITCH);
+
+    // Track a smoothed velocity so releasing mid-swipe flicks the sphere onward.
+    var now = performance.now();
+    var dtv = Math.max(8, now - lastMoveT) / 1000;
+    lastMoveT = now;
+    cam.vYaw   = cam.vYaw   * 0.6 + (-dx * k / dtv) * 0.4;
+    cam.vPitch = cam.vPitch * 0.6 + ( dy * k / dtv) * 0.4;
   });
 
-  function endDrag(e) {
-    if (!dragging || (e && e.pointerId !== pointerId)) return;
-    dragging = false;
-    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
-    pointerId = null;
-    canvas.classList.remove("dragging");
+  function release(e) {
+    if (!pointers[e.pointerId]) return;
+    delete pointers[e.pointerId];
+    if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+
+    var list = pointerList();
+    if (list.length === 1) {
+      // Lifting one finger of a pinch: hand control back to the survivor without a jump.
+      dragging = true;
+      lastMoveT = performance.now();
+      cam.vYaw = cam.vPitch = 0;
+      canvas.classList.add("dragging");
+    } else if (list.length === 0) {
+      // Released after pausing mid-drag? Then it is not a flick.
+      if (performance.now() - lastMoveT > 90) { cam.vYaw = 0; cam.vPitch = 0; }
+      dragging = false;
+      canvas.classList.remove("dragging");
+    } else {
+      beginPinch();
+    }
   }
-  canvas.addEventListener("pointerup", endDrag);
-  canvas.addEventListener("pointercancel", endDrag);
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
 
   canvas.addEventListener("wheel", function (e) {
     e.preventDefault();
     // Normalise line- and page-mode deltas so trackpads and mice agree.
     var unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
-    state.dist = Math.max(MIN_DIST, Math.min(MAX_DIST, state.dist * Math.exp(e.deltaY * unit * 0.0012)));
+    cam.tDist = clamp(cam.tDist * Math.exp(e.deltaY * unit * 0.0012), MIN_DIST, MAX_DIST);
     dismissHint();
   }, { passive: false });
 
+  /* ---------------- pause control ---------------- */
+
+  function setPaused(v) {
+    paused = v;
+    toggle.classList.toggle("paused", paused);
+    toggle.setAttribute("aria-pressed", paused ? "true" : "false");
+    toggle.setAttribute("aria-label", paused ? "Resume rotation" : "Pause rotation");
+    dismissHint();
+  }
+
+  toggle.addEventListener("click", function () { setPaused(!paused); });
+
   window.addEventListener("keydown", function (e) {
-    if (e.code === "Space" || e.key === " ") {
-      e.preventDefault();
-      state.paused = !state.paused;
-      dismissHint();
-    }
+    if (e.code !== "Space" && e.key !== " ") return;
+    // The button is a real <button>, so let it handle its own Space press.
+    if (document.activeElement === toggle) return;
+    e.preventDefault();
+    setPaused(!paused);
   });
+
+  if (coarse) hint.textContent = "drag to orbit · pinch to zoom";
 
   /* ---------------- context loss ---------------- */
 
@@ -409,17 +569,36 @@ void main() {
     last = now;
 
     resize();
-    if (!state.paused) {
-      state.phase += state.speed * dt;
-      if (state.phase > Math.PI * 2) state.phase -= Math.PI * 2;   // keep float precision tight
+    adapt(dt);
+
+    if (!paused) {
+      phase += SPIN * dt;
+      if (phase > Math.PI * 2) phase -= Math.PI * 2;   // keep float precision tight
     }
 
+    // Coast after a flick, shedding speed at a fixed rate per second.
+    if (!dragging && (cam.vYaw || cam.vPitch)) {
+      cam.tYaw   += cam.vYaw * dt;
+      cam.tPitch  = clamp(cam.tPitch + cam.vPitch * dt, -MAX_PITCH, MAX_PITCH);
+      var decay = Math.exp(-FRICTION * dt);
+      cam.vYaw   *= decay;
+      cam.vPitch *= decay;
+      if (Math.abs(cam.vYaw)   < 1e-4) cam.vYaw = 0;
+      if (Math.abs(cam.vPitch) < 1e-4) cam.vPitch = 0;
+    }
+
+    // Exponential ease written against dt, so the feel is identical at 60 and 144 Hz.
+    var a = 1 - Math.exp(-EASE * dt);
+    cam.yaw   += (cam.tYaw   - cam.yaw)   * a;
+    cam.pitch += (cam.tPitch - cam.pitch) * a;
+    cam.dist  += (cam.tDist  - cam.dist)  * a;
+
     gl.uniform2f(loc.res, width, height);
-    gl.uniform1f(loc.phase, state.phase);
-    gl.uniform1f(loc.tilt,  state.tilt);
-    gl.uniform1f(loc.yaw,   state.yaw);
-    gl.uniform1f(loc.pitch, state.pitch);
-    gl.uniform1f(loc.dist,  state.dist);
+    gl.uniform1f(loc.phase, phase);
+    gl.uniform1f(loc.tilt,  tilt);
+    gl.uniform1f(loc.yaw,   cam.yaw);
+    gl.uniform1f(loc.pitch, cam.pitch);
+    gl.uniform1f(loc.dist,  cam.dist);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
