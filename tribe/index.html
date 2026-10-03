@@ -1,0 +1,1609 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flint to Forum</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: the living map leads; the tribe's ledger runs beside it, and the
+     knowledge strata sit below like a dig section, oldest age at the bottom. */
+  :root {
+    --bg: #e6e8e2;          /* limestone */
+    --panel: #f4f5f1;
+    --raised: #ffffff;
+    --ink: #1c211e;
+    --ink-2: #48514b;
+    --muted: #6c746d;
+    --line: #cdd2c9;
+    --accent: #2f4fa2;      /* lapis: traded across the Bronze Age world */
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(47, 79, 162, .13);
+    --g-food: #eda100; --g-mat: #2a78d6; --g-build: #e34948; --g-know: #4a3aa7; --g-dep: #bdb9ad;
+    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b;
+    /* soil tints for the five strata, oldest first */
+    --s0: #dcdcd3; --s1: #e2dbcb; --s2: #e5d8c3; --s3: #dbd3cd; --s4: #dfe2e6;
+    --s-mark: rgba(60, 54, 44, .16);
+    /* the map and its overlays look the same in either theme */
+    --glass: rgba(16, 20, 18, .76);
+    --glass-ink: #f2f0e8;
+    --font-display: "Alegreya SC", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --font-body: "Alegreya Sans", "Gill Sans", "Gill Sans MT", "Segoe UI", system-ui, sans-serif;
+    --font-data: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121513; --panel: #1a1e1b; --raised: #222724; --ink: #e7e9e3; --ink-2: #b9bfb7; --muted: #8d948b; --line: #2e3530;
+      --accent: #8ea6f2; --accent-ink: #0e1322; --accent-soft: rgba(142, 166, 242, .15);
+      --g-food: #c98500; --g-mat: #3987e5; --g-build: #e66767; --g-know: #9085e9; --g-dep: #656a63;
+      --s0: #1d201e; --s1: #23221e; --s2: #26231d; --s3: #242021; --s4: #1e2227; --s-mark: rgba(230, 220, 200, .07);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121513; --panel: #1a1e1b; --raised: #222724; --ink: #e7e9e3; --ink-2: #b9bfb7; --muted: #8d948b; --line: #2e3530;
+    --accent: #8ea6f2; --accent-ink: #0e1322; --accent-soft: rgba(142, 166, 242, .15);
+    --g-food: #c98500; --g-mat: #3987e5; --g-build: #e66767; --g-know: #9085e9; --g-dep: #656a63;
+    --s0: #1d201e; --s1: #23221e; --s2: #26231d; --s3: #242021; --s4: #1e2227; --s-mark: rgba(230, 220, 200, .07);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 400 15px/1.45 var(--font-body);
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .app { max-width: 1500px; margin: 0 auto; padding-inline: 20px; padding-block: 14px 48px; display: grid; gap: 14px; }
+
+  /* ---------- header ---------- */
+  .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px; }
+  .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .year-ring { width: 40px; height: 40px; flex: none; }
+  .year-ring .track { fill: none; stroke: var(--line); stroke-width: 4; }
+  .year-ring .done { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset .3s linear; }
+  .year-ring text { font: 500 11px var(--font-data); fill: var(--ink-2); }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+  h1 small { font-family: var(--font-body); font-weight: 400; font-size: 13px; letter-spacing: .02em; color: var(--muted); margin-left: 8px; }
+  .meta { margin-top: 5px; font: 400 13px var(--font-data); color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .meta b { font-weight: 500; color: var(--ink); }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); padding: 2px; gap: 2px; }
+  .seg button {
+    border: 0; background: transparent; color: var(--ink-2); cursor: pointer;
+    font: 500 13px var(--font-data); padding: 6px 10px; border-radius: 7px; min-width: 42px; min-height: 32px;
+  }
+  .seg button:hover { background: var(--accent-soft); color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .seg svg { width: 14px; height: 14px; display: block; margin: 0 auto; fill: currentColor; }
+  .btn {
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+    font: 500 14px var(--font-body); padding: 6px 12px; border-radius: 9px; min-height: 38px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.confirm { border-color: var(--crit); color: var(--crit); }
+  .linkish { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font: 500 14px var(--font-body); text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ---------- main grid ---------- */
+  .main {
+    display: grid; gap: 14px; align-items: start;
+    grid-template-columns: minmax(0, 1fr) 344px;
+    grid-template-areas: "map side" "strata chron";
+  }
+  .mapcol { grid-area: map; position: relative; min-width: 0; display: grid; gap: 8px; }
+  .mapwrap { position: relative; border-radius: 10px; overflow: hidden; background: #1e4b67; aspect-ratio: 3 / 2; max-width: 100%; }
+  #map { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  #map.over { cursor: pointer; }
+  #map.drag { cursor: grabbing; }
+  .zoom { position: absolute; right: 10px; bottom: 10px; display: grid; gap: 4px; z-index: 1; }
+  .zoom button {
+    width: 34px; height: 34px; border-radius: 8px; border: 0; cursor: pointer;
+    background: var(--glass); color: var(--glass-ink); font: 500 18px/1 var(--font-body);
+    display: grid; place-items: center;
+  }
+  .zoom button:hover { background: rgba(16, 20, 18, .9); }
+  .zoom svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+  .caption { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 13px; color: var(--ink-2); }
+  .caption .k { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35) inset; }
+  .caption .hint { color: var(--muted); }
+
+  .chips { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; max-width: 60%; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 999px; background: var(--glass); color: var(--glass-ink); font: 500 12.5px var(--font-body); }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .ticker { position: absolute; left: 10px; bottom: 10px; right: 56px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; pointer-events: none; }
+  .ticker div {
+    background: var(--glass); color: var(--glass-ink); font: 400 13.5px/1.35 var(--font-body);
+    padding: 5px 10px; border-radius: 7px; max-width: min(560px, 100%);
+    animation: tick-in .35s ease-out both; transition: opacity .8s ease;
+  }
+  .ticker div.old { opacity: 0; }
+  .ticker b { font-weight: 700; }
+  @keyframes tick-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .banner { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; background: radial-gradient(ellipse at center, rgba(10, 12, 11, .62), rgba(10, 12, 11, .1) 70%); color: #f6f3ea; text-align: center; padding: 20px; opacity: 0; transition: opacity 1s ease; }
+  .banner.show { opacity: 1; }
+  .banner .eyebrow { font: 500 12px var(--font-data); letter-spacing: .14em; text-transform: uppercase; opacity: .8; }
+  .banner .title { font: 700 clamp(30px, 6vw, 64px)/1 var(--font-display); margin: 10px 0 8px; letter-spacing: .02em; }
+  .banner .line { font: 400 italic 17px/1.4 var(--font-body); max-width: 34ch; margin: 0 auto; }
+
+  .inspect {
+    position: absolute; top: 10px; right: 10px; width: 264px; max-width: calc(100% - 20px);
+    background: var(--raised); color: var(--ink); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, .22); z-index: 2;
+  }
+  .inspect h3 { font: 700 19px/1.1 var(--font-display); margin: 0 26px 4px 0; }
+  .inspect .role { display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--ink-2); }
+  .inspect .doing { margin-top: 6px; font-size: 14px; }
+  .inspect dl { margin: 8px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13.5px; }
+  .inspect dt { color: var(--muted); }
+  .inspect dd { margin: 0; min-width: 0; }
+  .inspect ul { margin: 8px 0 0; padding-left: 16px; font-size: 13.5px; color: var(--ink-2); }
+  .inspect .x { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border: 0; background: none; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1; }
+  .inspect .x:hover { background: var(--accent-soft); color: var(--ink); }
+
+  /* ---------- side panels ---------- */
+  .side { grid-area: side; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 14px; min-width: 0; }
+  .panel h2 { font: 700 12px/1.2 var(--font-body); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  .popline { display: flex; align-items: baseline; gap: 8px; }
+  .big { font: 700 40px/1 var(--font-body); letter-spacing: -.01em; }
+  .unit { font-size: 15px; color: var(--ink-2); }
+  .sub { font-size: 13.5px; color: var(--ink-2); margin-top: 2px; }
+  .kv { margin: 10px 0 0; display: grid; gap: 6px; }
+  .kv > div { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 10px; }
+  .kv dt { font-size: 13px; color: var(--muted); }
+  .kv dd { margin: 0; display: flex; align-items: center; gap: 10px; font: 500 14px var(--font-data); font-variant-numeric: tabular-nums; min-width: 0; }
+  .meter { flex: 1; height: 6px; border-radius: 3px; background: var(--accent-soft); overflow: hidden; min-width: 40px; }
+  .meter i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--accent); transition: width .3s ease; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font: 500 13px var(--font-body); color: var(--ink-2); white-space: nowrap; }
+  .status i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  .status svg { width: 12px; height: 12px; flex: none; }
+  .mats { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 8px; }
+  .mats li { display: grid; gap: 0; min-width: 0; }
+  .mats span { font-size: 12px; color: var(--muted); }
+  .mats b { font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; }
+
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: 132px; overflow: visible; }
+  .chart .tip { position: absolute; top: 0; pointer-events: none; background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; font: 500 12px var(--font-data); white-space: nowrap; box-shadow: 0 3px 10px rgba(0, 0, 0, .12); transform: translateX(-50%); }
+  .chart .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  .stack { display: flex; gap: 2px; height: 12px; margin: 2px 0 10px; }
+  .stack i { display: block; height: 100%; min-width: 3px; transition: flex-grow .4s ease; }
+  .stack i:first-child { border-radius: 4px 0 0 4px; }
+  .stack i:last-child { border-radius: 0 4px 4px 0; }
+  .wl { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+  .wl li { display: grid; grid-template-columns: 12px 1fr auto; gap: 2px 8px; align-items: baseline; }
+  .wl .dot { transform: translateY(1px); }
+  .wl .nm { font-weight: 500; font-size: 14px; }
+  .wl .n { font: 500 14px var(--font-data); font-variant-numeric: tabular-nums; }
+  .wl .det { grid-column: 2 / 4; font-size: 12.5px; color: var(--muted); line-height: 1.3; }
+
+  .rs-name { font: 700 20px/1.15 var(--font-display); margin: 2px 0 8px; }
+  .bar { height: 8px; border-radius: 4px; background: var(--accent-soft); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .25s linear; }
+  .rs-meta { margin-top: 6px; font: 400 12.5px var(--font-data); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .rs-note { margin-top: 8px; font-size: 13.5px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+  .rs-wait { margin-top: 8px; font-size: 13.5px; display: flex; gap: 6px; align-items: center; }
+
+  /* ---------- chronicle ---------- */
+  .chron { grid-area: chron; display: flex; flex-direction: column; align-self: stretch; min-height: 320px; max-height: 760px; }
+  .chron-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .chron-head h2 { margin: 0; }
+  .seg.small button { font: 500 12px var(--font-body); padding: 4px 8px; min-width: 0; min-height: 28px; }
+  .log { list-style: none; margin: 0; padding: 0 4px 0 0; overflow-y: auto; flex: 1; min-height: 0; display: grid; align-content: start; gap: 0; }
+  .log li { display: grid; grid-template-columns: 58px 12px 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.38; }
+  .log li:first-child { border-top: 0; }
+  .log .when { font: 400 11.5px/1.7 var(--font-data); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .log .mk { width: 9px; height: 9px; margin-top: 6px; border-radius: 50%; background: var(--line); }
+  .log .c-tech .mk { background: var(--accent); border-radius: 2px; transform: rotate(45deg) scale(.9); }
+  .log .c-era .mk { background: var(--accent); border-radius: 2px; width: 11px; height: 11px; margin-top: 5px; }
+  .log .c-era .tx { font-weight: 700; }
+  .log .c-idea .mk { background: transparent; border: 2px solid var(--accent); }
+  .log .c-death .mk { background: transparent; border: 2px solid var(--muted); border-radius: 1px; width: 2px; height: 11px; margin-left: 3px; margin-top: 4px; }
+  .log .c-event .mk { background: var(--ink-2); }
+  .log .c-build .mk { background: transparent; border: 2px solid var(--ink-2); border-radius: 2px; }
+  .log .c-trade .mk { background: var(--g-food); }
+  .log .c-year .tx { color: var(--muted); font-size: 13px; }
+  .log .c-year .mk { visibility: hidden; }
+  .log .tx { min-width: 0; }
+  .log-empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+  /* ---------- knowledge strata ---------- */
+  .strata { grid-area: strata; min-width: 0; padding: 14px; }
+  .strata-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; margin-bottom: 10px; }
+  .strata-head h2 { margin: 0; }
+  .strata-head p { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 62ch; }
+  .strata-body { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 14px; align-items: start; }
+  .layers { display: grid; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .layer { display: grid; grid-template-columns: 132px minmax(0, 1fr); border-top: 1px solid var(--s-mark); position: relative; }
+  .layer:first-child { border-top: 0; }
+  .layer[data-era="0"] { background-color: var(--s0); background-image: radial-gradient(var(--s-mark) 1.4px, transparent 1.6px), radial-gradient(var(--s-mark) 1px, transparent 1.2px); background-size: 15px 13px, 9px 11px; background-position: 0 0, 5px 6px; }
+  .layer[data-era="1"] { background-color: var(--s1); background-image: repeating-linear-gradient(0deg, transparent 0 9px, var(--s-mark) 9px 10px), repeating-linear-gradient(90deg, transparent 0 14px, var(--s1) 14px 22px); }
+  .layer[data-era="2"] { background-color: var(--s2); background-image: radial-gradient(var(--s-mark) .9px, transparent 1.1px); background-size: 6px 6px; }
+  .layer[data-era="3"] { background-color: var(--s3); background-image: repeating-linear-gradient(-45deg, transparent 0 7px, var(--s-mark) 7px 8px); }
+  .layer[data-era="4"] { background-color: var(--s4); background-image: linear-gradient(var(--s-mark) 1px, transparent 1px), linear-gradient(90deg, var(--s-mark) 1px, transparent 1px); background-size: 26px 13px; }
+  .layer.future .finds, .layer.future .layer-label { opacity: .78; }
+  .layer.current { box-shadow: inset 3px 0 0 var(--accent); }
+  .layer-label { padding: 10px 10px 10px 12px; display: grid; align-content: start; gap: 1px; }
+  .layer-label b { font: 700 16px/1.1 var(--font-display); }
+  .layer-label span { font: 400 11px/1.4 var(--font-data); color: var(--muted); }
+  .layer-label em { font-style: normal; font-size: 12px; color: var(--ink-2); margin-top: 4px; }
+  .finds { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 10px 10px 0; align-content: flex-start; min-width: 0; }
+  .find {
+    position: relative; overflow: hidden; display: inline-grid; gap: 0; text-align: left; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+    border-radius: 7px; padding: 5px 9px 6px; min-height: 40px; min-width: 0;
+  }
+  .find .nm { font: 500 14px/1.2 var(--font-body); }
+  .find .st { font: 400 11px/1.3 var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .find .prog { position: absolute; left: 0; bottom: 0; height: 3px; width: calc(var(--p, 0) * 100%); background: var(--accent); }
+  .find[data-state="known"] { background: var(--raised); border-color: transparent; box-shadow: 0 1px 0 var(--s-mark); }
+  .find[data-state="known"] .st::before { content: "\2713\00a0"; color: var(--good); }
+  .find[data-state="focus"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: var(--raised); }
+  .find[data-state="focus"] .st { color: var(--accent); }
+  .find[data-state="open"] { border-style: solid; border-color: var(--ink-2); background: transparent; }
+  .find[data-state="blocked"] { border-style: dashed; background: transparent; }
+  .find[data-state="locked"] { background: transparent; border-style: dotted; opacity: .55; }
+  .find[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .find:hover { border-color: var(--accent); }
+  .find.gate .nm::after { content: " \25C6"; color: var(--accent); font-size: 11px; vertical-align: 1px; }
+
+  .detail { background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; position: sticky; top: 12px; min-width: 0; }
+  .detail .eyebrow { font: 500 11px var(--font-data); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .detail h3 { font: 700 20px/1.15 var(--font-display); margin: 4px 0 6px; }
+  .detail p { margin: 0 0 8px; font-size: 14px; }
+  .detail ul { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 3px; font-size: 13.5px; }
+  .detail li { display: flex; gap: 6px; align-items: baseline; }
+  .detail li .ok { color: var(--good); font-weight: 700; }
+  .detail li .no { color: var(--muted); }
+  .detail .state { font-size: 13.5px; color: var(--ink-2); margin-bottom: 8px; }
+  .detail .btn { width: 100%; }
+
+  /* ---------- end card ---------- */
+  .endcard { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(8, 10, 9, .55); z-index: 10; }
+  .endcard .card { background: var(--raised); color: var(--ink); border-radius: 12px; border: 1px solid var(--line); max-width: 520px; width: 100%; padding: 22px 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); max-height: calc(100% - 32px); overflow-y: auto; }
+  .endcard .eyebrow { font: 500 12px var(--font-data); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .endcard h2 { font: 700 32px/1.05 var(--font-display); margin: 6px 0 8px; text-wrap: balance; }
+  .endcard p { margin: 0 0 12px; color: var(--ink-2); }
+  .endcard .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 6px 0 14px; padding: 12px 0; border-block: 1px solid var(--line); }
+  .endcard .stats b { display: block; font: 700 24px/1.1 var(--font-body); }
+  .endcard .stats span { font-size: 12.5px; color: var(--muted); }
+  .endcard h3 { font: 700 12px var(--font-body); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+  .endcard ul { margin: 0 0 16px; padding-left: 18px; font-size: 14px; }
+  .endcard .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+  @media (max-width: 1100px) {
+    .main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "side" "chron" "strata"; }
+    .side { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .chron { max-height: 460px; }
+  }
+  @media (max-width: 720px) {
+    .strata-body { grid-template-columns: minmax(0, 1fr); }
+    .detail { position: static; order: -1; }
+    .layer { grid-template-columns: minmax(0, 1fr); }
+    .layer-label { padding-bottom: 0; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline; }
+    .layer-label em { grid-column: 1 / -1; margin-top: 0; }
+    .finds { padding-left: 10px; }
+  }
+  @media (max-width: 560px) {
+    .app { padding-inline: 16px; }
+    h1 { font-size: 25px; }
+    .inspect { position: static; width: auto; max-width: none; box-shadow: none; }
+    .ticker div:not(:last-child) { display: none; }
+    .ticker div { font-size: 12.5px; }
+    .chips { max-width: 90%; }
+    .mats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .log li { grid-template-columns: 50px 10px 1fr; font-size: 13.5px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ticker div { animation: none; }
+    .banner, .meter i, .bar i, .stack i, .year-ring .done { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg class="year-ring" viewBox="0 0 40 40" aria-hidden="true">
+        <circle class="track" cx="20" cy="20" r="16"></circle>
+        <circle class="done" id="ring" cx="20" cy="20" r="16" transform="rotate(-90 20 20)" stroke-dasharray="100.53" stroke-dashoffset="100.53"></circle>
+        <text id="ringTxt" x="20" y="24" text-anchor="middle">Sp</text>
+      </svg>
+      <div>
+        <h1><span id="tribeName">The tribe</span><small id="seedLbl"></small></h1>
+        <div class="meta" aria-live="off"><span>Year <b id="yearLbl">1</b></span><span id="seasonLbl">Spring</span><span id="eraLbl">Paleolithic</span></div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Simulation speed">
+        <button type="button" id="pauseBtn" aria-label="Pause" aria-pressed="false" title="Pause (space)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path id="pauseIco" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+        </button>
+        <button type="button" data-speed="1" aria-pressed="false" title="1 year every 40 seconds (key 1)">1&times;</button>
+        <button type="button" data-speed="3" aria-pressed="true" title="1 year every 13 seconds (key 2)">3&times;</button>
+        <button type="button" data-speed="10" aria-pressed="false" title="1 year every 4 seconds (key 3)">10&times;</button>
+        <button type="button" data-speed="30" aria-pressed="false" title="Nearly a year a second (key 4)">30&times;</button>
+      </div>
+      <button type="button" class="btn" id="newBtn">New world</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="mapcol" aria-label="Map">
+      <div class="mapwrap">
+        <canvas id="map" role="img" aria-label="Map of the tribe's land: camp, fields, forests, hills and the people at work"></canvas>
+        <div class="chips" id="chips"></div>
+        <div class="ticker" id="ticker" aria-hidden="true"></div>
+        <div class="banner" id="banner" aria-hidden="true"></div>
+        <div class="zoom" role="group" aria-label="Map zoom">
+          <button type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in">+</button>
+          <button type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out">&minus;</button>
+          <button type="button" id="zoomCamp" aria-label="Centre on the camp" title="Centre on the camp"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg></button>
+        </div>
+      </div>
+      <div class="inspect" id="inspect" hidden></div>
+      <div class="caption">
+        <span class="k"><span class="dot" style="background:var(--map-food)"></span>Food</span>
+        <span class="k"><span class="dot" style="background:var(--map-mat)"></span>Materials</span>
+        <span class="k"><span class="dot" style="background:var(--map-build)"></span>Building</span>
+        <span class="k"><span class="dot" style="background:var(--map-know)"></span>Knowledge</span>
+        <span class="k"><span class="dot" style="background:#f2ede2"></span>Children</span>
+        <span class="k"><span class="dot" style="background:#a9a398"></span>Elders and resting</span>
+        <span class="hint">Click anyone to follow them. Drag to pan; zoom with the buttons, a pinch, or Ctrl + scroll.</span>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="panel" aria-labelledby="h-tribe">
+        <h2 id="h-tribe">The tribe</h2>
+        <div class="popline"><span class="big" id="pop">12</span><span class="unit">people</span></div>
+        <div class="sub" id="popBreak"></div>
+        <dl class="kv">
+          <div><dt>Shelter</dt><dd><span id="beds">12 / 16</span><span class="meter"><i id="bedsBar"></i></span></dd></div>
+          <div><dt>Food</dt><dd><span id="food">36</span><span class="status" id="foodStatus"></span></dd></div>
+        </dl>
+        <ul class="mats" id="mats"></ul>
+      </section>
+
+      <section class="panel" aria-labelledby="h-pop">
+        <h2 id="h-pop">Population by year</h2>
+        <div class="chart" id="chart"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-work">
+        <h2 id="h-work">Work</h2>
+        <div class="stack" id="stack" aria-hidden="true"></div>
+        <ul class="wl" id="workList"></ul>
+      </section>
+
+      <section class="panel" aria-labelledby="h-know">
+        <h2 id="h-know">Studying</h2>
+        <div class="rs-name" id="rsName">&nbsp;</div>
+        <div class="bar"><i id="rsBar"></i></div>
+        <div class="rs-meta" id="rsMeta"></div>
+        <div class="rs-wait" id="rsWait" hidden></div>
+        <div class="rs-note" id="rsNote"></div>
+      </section>
+    </aside>
+
+    <section class="panel strata" aria-labelledby="h-strata" id="strata">
+      <div class="strata-head">
+        <h2 id="h-strata">Knowledge strata</h2>
+        <p>Each layer is an age, oldest at the bottom as in a dig. Pick any discovery to read about it, and choose what the tribe studies next. &#9670; marks the discovery that opens an age.</p>
+      </div>
+      <div class="strata-body">
+        <div class="layers" id="layers"></div>
+        <aside class="detail" id="detail" aria-live="polite"></aside>
+      </div>
+    </section>
+
+    <section class="panel chron" aria-labelledby="h-chron">
+      <div class="chron-head">
+        <h2 id="h-chron">Chronicle</h2>
+        <div class="seg small" role="group" aria-label="Filter the chronicle">
+          <button type="button" data-f="all" aria-pressed="true">All</button>
+          <button type="button" data-f="disc" aria-pressed="false">Discoveries</button>
+          <button type="button" data-f="ppl" aria-pressed="false">People</button>
+          <button type="button" data-f="evt" aria-pressed="false">Events</button>
+        </div>
+      </div>
+      <ol class="log" id="log"></ol>
+    </section>
+  </main>
+</div>
+
+<div class="endcard" id="endcard" hidden></div>
+
+<script src="sim.js"></script>
+<script>
+(() => {
+  'use strict';
+  const Sim = window.TribeSim;
+  const { W, H, N, T, JOBS, TECH, TECHS, ERAS, BUILD, SEASONS } = Sim;
+  const TS = 16;                      // map units per tile
+  const MW = W * TS, MH = H * TS;
+  const $ = s => document.querySelector(s);
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* Map colours. The map is a picture of the land, so it reads the same in both themes. */
+  const GROUP = { food: '#eda100', mat: '#2a78d6', build: '#e34948', know: '#4a3aa7' };
+  const KID = '#f2ede2', ELDER = '#a9a398';
+  const SKIN = ['#8a5a3c', '#a8714a', '#c48d62', '#6f4630'];
+  const RES = { food: '#c2452d', wood: '#7a5230', stone: '#a3a39b', clay: '#b88a5a', hides: '#d0a878', copper: '#3aa384', tin: '#cdd2d8', iron: '#8e4a35' };
+  document.documentElement.style.setProperty('--map-food', GROUP.food);
+  document.documentElement.style.setProperty('--map-mat', GROUP.mat);
+  document.documentElement.style.setProperty('--map-build', GROUP.build);
+  document.documentElement.style.setProperty('--map-know', GROUP.know);
+
+  const LAND = {
+    [T.SAND]: [[217, 198, 146], [221, 200, 140], [212, 190, 136], [226, 226, 219]],
+    [T.GRASS]: [[132, 172, 88], [121, 160, 76], [166, 160, 84], [221, 227, 225]],
+    [T.FOREST]: [[96, 138, 68], [86, 126, 60], [134, 126, 62], [208, 216, 212]],
+    [T.HILLS]: [[163, 153, 116], [157, 147, 111], [160, 144, 107], [212, 216, 214]],
+    [T.MOUNTAIN]: [[124, 119, 111], [122, 117, 109], [123, 116, 107], [230, 233, 235]],
+  };
+  const WATER = {
+    [T.DEEP]: [[29, 74, 102], [31, 79, 107], [28, 70, 98], [27, 62, 88]],
+    [T.SHALLOW]: [[47, 111, 143], [52, 119, 149], [45, 105, 136], [62, 104, 128]],
+    [T.RIVER]: [[60, 135, 168], [66, 141, 172], [57, 127, 160], [178, 202, 214]],
+  };
+  const CROWN = [[78, 138, 64], [56, 110, 50], null, [50, 84, 62]];
+  const AUTUMN = [[184, 116, 44], [201, 154, 46], [122, 138, 50], [168, 84, 40]];
+  const rgb = (c, d) => `rgb(${Math.max(0, Math.min(255, c[0] + (d || 0))) | 0},${Math.max(0, Math.min(255, c[1] + (d || 0))) | 0},${Math.max(0, Math.min(255, c[2] + (d || 0))) | 0})`;
+  const isWater = t => t === T.DEEP || t === T.SHALLOW || t === T.RIVER;
+
+  /* ------------------------------------------------------------ state */
+  let S = null;
+  let speed = 3, paused = false;
+  let sel = null;                 // { k: 'p'|'b'|'t', id }
+  let focusTech = null;           // tech shown in the detail box
+  let filter = 'all';
+  let shownLogN = 0;
+  let lastHist = -1, lastSeason = -1, lastKnownCount = -1, lastEnd = null;
+  const ticker = [];
+
+  try { const v = +localStorage.getItem('f2f-speed'); if ([1, 3, 10, 30].includes(v)) speed = v; } catch (e) { /* storage unavailable */ }
+
+  /* ------------------------------------------------------------ canvas */
+  const canvas = $('#map');
+  const ctx = canvas.getContext('2d');
+  const base = document.createElement('canvas');
+  const bg = base.getContext('2d');
+  const wearC = document.createElement('canvas');
+  wearC.width = W * 4; wearC.height = H * 4;
+  const wg = wearC.getContext('2d');
+  let baseScale = 0, qkey = new Int32Array(N).fill(-1);
+  let cssW = 0, cssH = 0, dpr = 1;
+  // Camera: top-left corner in map units and a zoom where 1 shows the whole land.
+  const cam = { x: 0, y: 0, z: 1 };
+  const viewW = () => MW / cam.z, viewH = () => MH / cam.z;
+  function clampCam() {
+    cam.z = Math.max(1, Math.min(4, cam.z));
+    cam.x = Math.max(0, Math.min(MW - viewW(), cam.x));
+    cam.y = Math.max(0, Math.min(MH - viewH(), cam.y));
+  }
+  function centreOn(mx, my) { cam.x = mx - viewW() / 2; cam.y = my - viewH() / 2; clampCam(); }
+  function zoomAt(f, mx, my) {
+    const fx = (mx - cam.x) / viewW(), fy = (my - cam.y) / viewH();
+    cam.z *= f; clampCam();
+    cam.x = mx - fx * viewW(); cam.y = my - fy * viewH(); clampCam();
+  }
+  function homeCam() {
+    cam.z = cssW < 600 ? 2.4 : 2.2;
+    centreOn(S.cx * TS + 8, S.cy * TS + 8);
+  }
+
+  function sizeCanvas() {
+    const r = canvas.getBoundingClientRect();
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    cssW = r.width; cssH = r.height;
+    canvas.width = Math.max(1, Math.round(cssW * dpr));
+    canvas.height = Math.max(1, Math.round(cssH * dpr));
+    const want = Math.max(1, Math.min(3, Math.ceil(canvas.width * 2 / MW)));
+    if (want !== baseScale) {
+      baseScale = want;
+      base.width = MW * baseScale; base.height = MH * baseScale;
+      qkey.fill(-1);
+    }
+  }
+
+  const treeCount = i => S.wood[i] >= 16 ? 3 : S.wood[i] >= 8 ? 2 : S.wood[i] >= 3 ? 1 : 0;
+  function tileKey(i) {
+    const t = S.ter[i];
+    const ore = S.ore[i] && S.reveal[Sim.ORES[S.ore[i] - 1]] ? 1 : 0;
+    const berry = Sim.FOOD_MAX[t] >= 3 && S.food[i] >= 1.5 ? 1 : 0;
+    return t * 1000 + treeCount(i) * 100 + berry * 10 + ore + (S.woodMax[i] > 0 ? 5 : 0);
+  }
+
+  function ellipse(g, x, y, rx, ry) { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill(); }
+  function circle(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); }
+
+  function drawTile(i) {
+    const g = bg;
+    const x = i % W, y = (i / W) | 0, X = x * TS, Y = y * TS, t = S.ter[i], s = S.season;
+    const h = k => Sim.hash(x, y, S.seed + k);
+    g.save();
+    g.setTransform(baseScale, 0, 0, baseScale, 0, 0);
+    g.beginPath(); g.rect(X, Y, TS, TS); g.clip();
+    if (isWater(t)) {
+      const c = WATER[t][s];
+      const depth = t === T.DEEP ? (S.elev[i] - 0.3) * 60 : 0;
+      g.fillStyle = rgb(c, depth); g.fillRect(X, Y, TS, TS);
+      if (h(1) < 0.45 && !(s === 3 && t === T.RIVER)) { g.fillStyle = 'rgba(255,255,255,.10)'; g.fillRect(X + 2 + ((h(2) * 8) | 0), Y + 3 + ((h(3) * 9) | 0), 4, 1); }
+      for (let k = 0; k < 4; k++) {
+        const nx = x + [1, -1, 0, 0][k], ny = y + [0, 0, 1, -1][k];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        if (isWater(S.ter[ny * W + nx])) continue;
+        g.fillStyle = t === T.RIVER ? 'rgba(40,30,20,.18)' : 'rgba(235,245,240,.28)';
+        if (k === 0) g.fillRect(X + TS - 1.5, Y, 1.5, TS);
+        if (k === 1) g.fillRect(X, Y, 1.5, TS);
+        if (k === 2) g.fillRect(X, Y + TS - 1.5, TS, 1.5);
+        if (k === 3) g.fillRect(X, Y, TS, 1.5);
+      }
+      g.restore();
+      return;
+    }
+    const nw = (y > 0 && x > 0) ? (y - 1) * W + x - 1 : i;
+    let shade = Math.max(-16, Math.min(16, (S.elev[i] - S.elev[nw]) * 260));
+    if (s === 3) shade *= 0.4;
+    let c = LAND[t][s];
+    if (S.fertile[i] && s < 2 && (t === T.GRASS || t === T.FOREST)) c = [c[0] - 10, c[1] + 4, c[2] - 6];
+    g.fillStyle = rgb(c, shade); g.fillRect(X, Y, TS, TS);
+    for (let k = 0; k < 4; k++) {
+      g.fillStyle = rgb(c, shade + (h(30 + k) < 0.5 ? -9 : 8));
+      g.fillRect(X + ((h(10 + k) * 14) | 0), Y + ((h(20 + k) * 14) | 0), 2, 2);
+    }
+    if (t === T.HILLS) {
+      for (let k = 0; k < 2; k++) {
+        const bx = X + 4 + h(50 + k) * 8, by = Y + 6 + h(52 + k) * 7;
+        g.fillStyle = rgb(c, shade - 18); ellipse(g, bx + 0.8, by + 0.8, 3.6, 2.3);
+        g.fillStyle = rgb(c, shade + 12); ellipse(g, bx - 0.3, by - 0.3, 2.6, 1.5);
+      }
+    }
+    if (t === T.MOUNTAIN) {
+      g.fillStyle = rgb(c, -22);
+      g.beginPath(); g.moveTo(X + 1, Y + 15); g.lineTo(X + 8, Y + 2); g.lineTo(X + 15, Y + 15); g.fill();
+      g.fillStyle = rgb(c, 14);
+      g.beginPath(); g.moveTo(X + 1, Y + 15); g.lineTo(X + 8, Y + 2); g.lineTo(X + 8, Y + 15); g.fill();
+      g.fillStyle = '#eef1f2';
+      g.beginPath(); g.moveTo(X + 5.4, Y + 7); g.lineTo(X + 8, Y + 2); g.lineTo(X + 10.6, Y + 7); g.lineTo(X + 8, Y + 6); g.fill();
+    }
+    if (S.clay[i] && s !== 3) {
+      g.fillStyle = 'rgba(150,118,88,.55)'; ellipse(g, X + 4 + h(60) * 7, Y + 10 + h(61) * 3, 2.4, 1.2);
+      ellipse(g, X + 9 + h(62) * 4, Y + 5 + h(63) * 4, 1.8, 1);
+    }
+    if (S.ore[i] && S.reveal[Sim.ORES[S.ore[i] - 1]]) {
+      g.fillStyle = RES[Sim.ORES[S.ore[i] - 1]];
+      g.strokeStyle = 'rgba(30,24,20,.6)'; g.lineWidth = 0.6;
+      for (let k = 0; k < 3; k++) {
+        const ox = X + 3 + h(70 + k) * 10, oy = Y + 3 + h(73 + k) * 10;
+        g.beginPath(); g.moveTo(ox, oy - 2); g.lineTo(ox + 1.6, oy); g.lineTo(ox, oy + 2); g.lineTo(ox - 1.6, oy); g.closePath(); g.fill(); g.stroke();
+      }
+    }
+    if (S.woodMax[i] > 0) {
+      const n = treeCount(i);
+      const slots = [[4.5, 5], [11.5, 6.5], [7.5, 12]];
+      for (let k = 0; k < n; k++) {
+        const tx = X + slots[k][0] + (h(80 + k) - 0.5) * 2, ty = Y + slots[k][1] + (h(83 + k) - 0.5) * 2;
+        g.fillStyle = 'rgba(0,0,0,.2)'; ellipse(g, tx + 1, ty + 2.6, 3.4, 1.6);
+        g.fillStyle = '#5a4128'; g.fillRect(tx - 0.5, ty + 1, 1.2, 2.4);
+        const crown = s === 2 ? AUTUMN[(h(90 + k) * 4) | 0] : CROWN[s];
+        g.fillStyle = rgb(crown, -6); circle(g, tx, ty, 3.7);
+        g.fillStyle = rgb(crown, 18); circle(g, tx - 1, ty - 1.1, 1.7);
+        if (s === 3) { g.fillStyle = 'rgba(245,248,250,.9)'; ellipse(g, tx - 0.4, ty - 1.8, 2.6, 1.2); }
+      }
+      if (!n) {
+        g.fillStyle = '#6b5136'; circle(g, X + 5 + h(91) * 3, Y + 7, 1.1); circle(g, X + 10, Y + 10 + h(92) * 2, 1);
+      }
+    } else if (Sim.FOOD_MAX[t] >= 3 && h(40) < 0.3) {
+      const bx = X + 4 + h(41) * 8, by = Y + 4 + h(42) * 8;
+      g.fillStyle = s === 3 ? 'rgba(120,130,120,.6)' : rgb([70, 110, 58], s === 2 ? 10 : 0); circle(g, bx, by, 2.4);
+      if (S.food[i] >= 1.5 && (s === 1 || s === 2)) {
+        g.fillStyle = s === 2 ? '#5b3f73' : '#c23b4a';
+        circle(g, bx - 1, by - 0.5, 0.8); circle(g, bx + 1, by + 0.4, 0.8); circle(g, bx + 0.2, by - 1.3, 0.7);
+      }
+    }
+    g.restore();
+  }
+
+  function refreshBase(all) {
+    for (let i = 0; i < N; i++) {
+      const k = tileKey(i);
+      if (all || k !== qkey[i]) { qkey[i] = k; drawTile(i); }
+    }
+  }
+
+  function refreshWear() {
+    wg.clearRect(0, 0, wearC.width, wearC.height);
+    const c = S.season === 3 ? '120,112,104' : '112,88,58';
+    for (let i = 0; i < N; i++) {
+      const w = S.wear[i];
+      if (w < 2 || isWater(S.ter[i])) continue;
+      wg.fillStyle = `rgba(${c},${Math.min(0.5, Math.sqrt(w) / 22).toFixed(3)})`;
+      wg.fillRect((i % W) * 4, ((i / W) | 0) * 4, 4, 4);
+    }
+  }
+
+  /* ---------------------------------------------------------- buildings */
+  const byId = new Map();
+  function scaffold(g, b, X, Y) {
+    g.strokeStyle = 'rgba(70,48,26,.9)'; g.lineWidth = 0.8;
+    g.setLineDash([2, 1.5]); g.strokeRect(X + 2, Y + 2, 12, 12); g.setLineDash([]);
+    g.beginPath(); g.moveTo(X + 2, Y + 14); g.lineTo(X + 14, Y + 2); g.stroke();
+    const p = Math.max(0, Math.min(1, b.prog / b.need));
+    g.fillStyle = 'rgba(20,16,12,.7)'; g.fillRect(X + 2, Y + 15, 12, 2);
+    g.fillStyle = b.paid ? '#f6d36b' : '#bdb6a8'; g.fillRect(X + 2, Y + 15, 12 * p, 2);
+  }
+
+  function drawBuilding(g, b, t) {
+    const X = b.x * TS, Y = b.y * TS, cx = X + 8, cy = Y + 8;
+    const s = S.season;
+    if (!b.done && b.kind !== 'farm') { scaffold(g, b, X, Y); return; }
+    switch (b.kind) {
+      case 'hearth': {
+        g.fillStyle = 'rgba(0,0,0,.18)'; ellipse(g, cx, cy + 1, 6, 3.4);
+        g.fillStyle = '#8b8a84';
+        for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2; circle(g, cx + Math.cos(a) * 4.4, cy + Math.sin(a) * 3.2, 1.2); }
+        g.fillStyle = '#3b2c22'; ellipse(g, cx, cy, 3, 2);
+        break;
+      }
+      case 'hut': {
+        g.fillStyle = 'rgba(0,0,0,.22)'; ellipse(g, cx + 1, cy + 3, 6.4, 3.2);
+        g.fillStyle = '#86653f'; circle(g, cx, cy, 5.6);
+        g.strokeStyle = '#5b4327'; g.lineWidth = 0.8; g.beginPath(); g.arc(cx, cy, 5.6, 0, Math.PI * 2); g.stroke();
+        g.beginPath(); g.arc(cx, cy, 3.2, 0, Math.PI * 2); g.stroke();
+        g.fillStyle = s === 3 ? '#eef1f1' : '#a8834f'; circle(g, cx - 0.8, cy - 0.8, 1.6);
+        g.fillStyle = '#2c2118'; ellipse(g, cx, cy + 4.6, 1.5, 1);
+        break;
+      }
+      case 'house': {
+        g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(X + 3.5, Y + 5.5, 12, 10);
+        g.fillStyle = '#c7a477'; g.fillRect(X + 2, Y + 4, 12, 10);
+        g.fillStyle = s === 3 ? '#eef0ef' : '#a98659'; g.fillRect(X + 2, Y + 4, 12, 3);
+        g.fillStyle = '#3a2b1e'; g.fillRect(X + 7, Y + 10, 2.2, 4); g.fillRect(X + 11, Y + 9, 1.6, 1.6);
+        break;
+      }
+      case 'villa': {
+        g.fillStyle = 'rgba(0,0,0,.24)'; g.fillRect(X + 3, Y + 5, 13, 10);
+        g.fillStyle = '#e2dacb'; g.fillRect(X + 1.5, Y + 6, 13, 8.5);
+        g.fillStyle = s === 3 ? '#eef0f0' : '#b4573a';
+        g.beginPath(); g.moveTo(X + 0.5, Y + 6.5); g.lineTo(X + 4, Y + 2); g.lineTo(X + 12, Y + 2); g.lineTo(X + 15.5, Y + 6.5); g.fill();
+        g.fillStyle = '#4a3a2c'; g.fillRect(X + 7, Y + 10, 2.2, 4.5); g.fillRect(X + 3.5, Y + 9, 1.6, 1.8); g.fillRect(X + 11.5, Y + 9, 1.6, 1.8);
+        break;
+      }
+      case 'farm': {
+        const soil = s === 3 ? '#9a8e82' : '#7d5d3d';
+        g.fillStyle = soil; g.fillRect(X + 1, Y + 1, 14, 14);
+        if (!b.done) { scaffold(g, b, X, Y); break; }
+        const gr = b.growth || 0;
+        for (let r = 0; r < 4; r++) {
+          const ry = Y + 3 + r * 3.3;
+          if (s === 3) { g.fillStyle = 'rgba(240,244,245,.75)'; g.fillRect(X + 1, ry, 14, 1.2); continue; }
+          if (s === 2 && b.harv) { g.fillStyle = '#b89c5c'; for (let k = 0; k < 6; k++) g.fillRect(X + 2 + k * 2.2, ry, 1, 1.2); continue; }
+          const col = s === 2 ? '#dcb547' : s === 1 ? '#7aa645' : '#8fbf5a';
+          g.fillStyle = col;
+          const hgt = 0.6 + gr * 1.8;
+          if (s === 0 && gr < 0.25) { for (let k = 0; k < 6; k++) g.fillRect(X + 2 + k * 2.2, ry, 1, 1); }
+          else g.fillRect(X + 1.5, ry - hgt / 2, 13, hgt);
+        }
+        break;
+      }
+      case 'pen': {
+        g.strokeStyle = '#6e4e2e'; g.lineWidth = 1; g.strokeRect(X + 1.5, Y + 1.5, 13, 13);
+        g.fillStyle = '#6e4e2e';
+        for (const [px, py] of [[1.5, 1.5], [14.5, 1.5], [1.5, 14.5], [14.5, 14.5], [8, 1.5], [8, 14.5]]) g.fillRect(X + px - 0.8, Y + py - 0.8, 1.6, 1.6);
+        for (let k = 0; k < (b.n || 0); k++) {
+          const ax = X + 4 + ((k * 37) % 8) + Math.sin(t * 0.6 + k) * 0.8, ay = Y + 5 + ((k * 23) % 7);
+          g.fillStyle = k % 2 ? '#efe9dc' : '#8a6040'; ellipse(g, ax, ay, 1.8, 1.2);
+        }
+        break;
+      }
+      case 'kiln': {
+        g.fillStyle = 'rgba(0,0,0,.2)'; ellipse(g, cx + 1, cy + 2.5, 5.5, 3);
+        g.fillStyle = '#b5775a'; circle(g, cx, cy, 4.6);
+        g.fillStyle = '#7a4b34'; ellipse(g, cx, cy + 2.6, 1.8, 1.2);
+        const glow = 0.5 + (reduceMotion ? 0 : Math.sin(t * 3) * 0.2);
+        g.fillStyle = `rgba(255,150,60,${glow})`; ellipse(g, cx, cy + 2.6, 1.2, 0.8);
+        break;
+      }
+      case 'granary': {
+        g.fillStyle = 'rgba(0,0,0,.22)'; ellipse(g, cx + 1, cy + 3, 6, 3);
+        g.fillStyle = '#4b3a2c'; for (const dx of [-3, 0, 3]) g.fillRect(cx + dx - 0.6, cy + 2, 1.2, 3);
+        g.fillStyle = '#c9ab78'; circle(g, cx, cy, 5);
+        g.fillStyle = s === 3 ? '#eef0ef' : '#a17d4c'; circle(g, cx, cy, 3);
+        g.fillStyle = '#6a5034'; circle(g, cx, cy, 0.9);
+        break;
+      }
+      case 'stones': {
+        for (let k = 0; k < 8; k++) {
+          const a = k / 8 * Math.PI * 2, sx = cx + Math.cos(a) * 6, sy = cy + Math.sin(a) * 5;
+          g.fillStyle = 'rgba(0,0,0,.25)'; ellipse(g, sx + 0.8, sy + 1.6, 1.4, 0.8);
+          g.fillStyle = '#9d9b94'; g.fillRect(sx - 1, sy - 2.4, 2, 3.4);
+          g.fillStyle = '#bdbab2'; g.fillRect(sx - 1, sy - 2.4, 0.9, 3.4);
+        }
+        break;
+      }
+      case 'smithy': {
+        g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(X + 3, Y + 5, 12, 10);
+        g.fillStyle = '#6d6862'; g.fillRect(X + 2, Y + 4, 12, 9.5);
+        g.fillStyle = '#4c4843'; g.fillRect(X + 10, Y + 1.5, 2.5, 4);
+        const glow = 0.7 + (reduceMotion ? 0 : Math.sin(t * 7) * 0.25);
+        g.fillStyle = `rgba(255,140,50,${glow})`; g.fillRect(X + 5, Y + 9, 3, 3);
+        break;
+      }
+      case 'dock': {
+        const dir = dockDir(b);
+        g.fillStyle = '#8a6844';
+        if (dir[0]) g.fillRect(dir[0] > 0 ? cx : cx - 14, cy - 2, 14, 4); else g.fillRect(cx - 2, dir[1] > 0 ? cy : cy - 14, 4, 14);
+        g.fillStyle = '#5b4329';
+        for (let k = 0; k < 4; k++) circle(g, cx + dir[0] * k * 4 + (dir[1] ? 2.4 : 0), cy + dir[1] * k * 4 + (dir[0] ? 2.4 : 0), 0.9);
+        break;
+      }
+      case 'hall': {
+        g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(X + 2.5, Y + 5, 14, 10);
+        g.fillStyle = '#d3b98f'; g.fillRect(X + 1, Y + 4, 14, 10);
+        g.fillStyle = s === 3 ? '#eef0ef' : '#9a7a50'; g.fillRect(X + 0.5, Y + 3, 15, 2);
+        g.fillStyle = '#3d2e20'; for (const dx of [3, 7, 11]) g.fillRect(X + dx, Y + 7.5, 1.8, 3);
+        break;
+      }
+      case 'market': {
+        for (let k = 0; k < 2; k++) {
+          const mx = X + 1.5 + k * 7.5, my = Y + 3 + k * 5;
+          g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(mx + 1, my + 1, 6.5, 5);
+          for (let st = 0; st < 4; st++) { g.fillStyle = st % 2 ? '#f1e6cf' : (k ? '#2f6aa8' : '#b8442f'); g.fillRect(mx + st * 1.6, my, 1.6, 4); }
+          g.fillStyle = '#6b4a2c'; g.fillRect(mx, my + 4, 6.4, 1.2);
+        }
+        break;
+      }
+      case 'aqueduct': {
+        g.fillStyle = '#9fb7c2'; circle(g, cx, cy, 4); g.fillStyle = '#d7d1c4'; g.lineWidth = 1.4;
+        g.strokeStyle = '#cfc8b9'; g.beginPath(); g.arc(cx, cy, 4.4, 0, Math.PI * 2); g.stroke();
+        g.fillStyle = '#5fa0c4'; circle(g, cx, cy, 2.6);
+        break;
+      }
+      case 'forum': {
+        g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(X - 3, Y - 3, 24, 24);
+        g.fillStyle = '#e4ddcf'; g.fillRect(X - 4, Y - 4, 24, 24);
+        g.strokeStyle = 'rgba(120,110,95,.5)'; g.lineWidth = 0.5;
+        for (let k = 1; k < 6; k++) { g.beginPath(); g.moveTo(X - 4 + k * 4, Y - 4); g.lineTo(X - 4 + k * 4, Y + 20); g.stroke(); }
+        g.fillStyle = '#f2ede2'; g.fillRect(X + 1, Y - 3, 14, 7);
+        g.fillStyle = s === 3 ? '#eef0f0' : '#b4573a'; g.beginPath(); g.moveTo(X, Y - 3); g.lineTo(X + 8, Y - 7); g.lineTo(X + 16, Y - 3); g.fill();
+        g.fillStyle = '#c2b9a8'; for (let k = 0; k < 5; k++) g.fillRect(X + 2 + k * 2.9, Y - 2, 1.1, 6);
+        g.fillStyle = '#9b927f'; for (let k = 0; k < 6; k++) { circle(g, X - 2 + k * 4, Y + 18, 0.9); circle(g, X - 2 + k * 4, Y + 8, 0.9); }
+        break;
+      }
+    }
+    if (b.up) scaffold(g, b, X, Y);
+  }
+
+  function dockDir(b) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = b.x + dx, ny = b.y + dy;
+      if (nx >= 0 && ny >= 0 && nx < W && ny < H && S.ter[ny * W + nx] === T.SHALLOW) return [dx, dy];
+    }
+    return [1, 0];
+  }
+  const dockWater = new Map();
+  function waterNear(b) {
+    if (dockWater.has(b.id)) return dockWater.get(b.id);
+    const out = [];
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const nx = b.x + dx, ny = b.y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      if (S.ter[ny * W + nx] === T.SHALLOW && Math.hypot(dx, dy) >= 1) out.push([nx, ny]);
+    }
+    dockWater.set(b.id, out);
+    return out;
+  }
+
+  function drawAqueductLine(g, b) {
+    if (!b.src || !b.done) return;
+    const x0 = b.src[0] * TS + 8, y0 = b.src[1] * TS + 8, x1 = b.x * TS + 8, y1 = b.y * TS + 8;
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    g.strokeStyle = 'rgba(0,0,0,.22)'; g.lineWidth = 3.4; g.beginPath(); g.moveTo(x0 + 1.5, y0 + 2); g.lineTo(x1 + 1.5, y1 + 2); g.stroke();
+    g.strokeStyle = '#d6cebf'; g.lineWidth = 3; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    g.fillStyle = '#7f776a';
+    const n = Math.floor(len / 5);
+    for (let k = 1; k < n; k++) { const f = k / n; ellipse(g, x0 + (x1 - x0) * f, y0 + (y1 - y0) * f + 0.6, 0.9, 0.7); }
+  }
+
+  function drawWalls(g) {
+    const R = 9.5 * TS, cx = S.cx * TS + 8, cy = S.cy * TS + 8, steps = 72;
+    const pt = k => { const a = k / steps * Math.PI * 2; return [cx + Math.cos(a) * R, cy + Math.sin(a) * R * 0.92]; };
+    const land = ([x, y]) => { const tx = Math.floor(x / TS), ty = Math.floor(y / TS); return tx >= 0 && ty >= 0 && tx < W && ty < H && !isWater(S.ter[ty * W + tx]) && S.ter[ty * W + tx] !== T.MOUNTAIN; };
+    g.lineCap = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+      g.strokeStyle = pass ? '#cfc6b3' : 'rgba(40,34,26,.55)';
+      g.lineWidth = pass ? 2.6 : 4;
+      for (let k = 0; k < steps; k++) {
+        const a = pt(k), c = pt(k + 1);
+        if (!land(a) || !land(c)) continue;
+        g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(c[0], c[1]); g.stroke();
+      }
+    }
+    for (let k = 0; k < steps; k += 9) {
+      const p = pt(k);
+      if (!land(p)) continue;
+      g.fillStyle = 'rgba(40,34,26,.6)'; g.fillRect(p[0] - 3, p[1] - 3, 6, 6);
+      g.fillStyle = '#ddd4c2'; g.fillRect(p[0] - 2.4, p[1] - 2.6, 4.8, 4.8);
+    }
+    g.lineCap = 'butt';
+  }
+
+  /* ------------------------------------------------------------- agents */
+  let elderAgeCache = 50;
+  function personColor(p) {
+    const a = S.yr - p.born;
+    if (a < 12) return KID;
+    if (a >= elderAgeCache) return ELDER;
+    return GROUP[p.job && JOBS[p.job] ? JOBS[p.job].group : ''] || ELDER;
+  }
+
+  function drawPerson(g, p, t) {
+    const a = S.yr - p.born, kid = a < 12;
+    const task = p.task;
+    if (task && task.act === 'fish' && task.boat && task.ph === 'work') return;
+    const X = p.x * TS, Y = p.y * TS;
+    const moving = task && (task.ph === 'out' || task.ph === 'home');
+    const bob = moving && !reduceMotion ? Math.abs(Math.sin(t * 9 + p.id)) * 1.1 : 0;
+    const r = kid ? 2 : 2.9;
+    g.fillStyle = 'rgba(0,0,0,.28)'; ellipse(g, X, Y + r * 0.85, r * 1.15, r * 0.45);
+    g.fillStyle = personColor(p);
+    g.beginPath(); g.arc(X, Y - bob, r, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 0.9; g.strokeStyle = 'rgba(18,16,14,.9)'; g.stroke();
+    g.fillStyle = SKIN[p.skin || 0]; circle(g, X, Y - bob - r - 0.9, kid ? 1.2 : 1.6);
+    if (p.carry) {
+      const k = Object.keys(p.carry)[0];
+      g.fillStyle = RES[k] || '#999'; g.fillRect(X + r * 0.5, Y - bob - r - 3.4, 3, 3);
+      g.strokeStyle = 'rgba(18,16,14,.8)'; g.lineWidth = 0.6; g.strokeRect(X + r * 0.5, Y - bob - r - 3.4, 3, 3);
+    }
+  }
+
+  function drawBoats(g, t) {
+    const dock = S.buildings.find(b => b.kind === 'dock' && b.done);
+    if (!dock) return;
+    const water = waterNear(dock);
+    if (!water.length) return;
+    for (const p of S.people) {
+      const task = p.task;
+      if (!task || task.act !== 'fish' || !task.boat || task.ph !== 'work') continue;
+      const w = water[p.id % water.length];
+      const drift = reduceMotion ? 0 : 1;
+      const X = w[0] * TS + 8 + Math.sin(t * 0.5 + p.id) * 3 * drift, Y = w[1] * TS + 8 + Math.cos(t * 0.4 + p.id) * 2 * drift;
+      g.fillStyle = 'rgba(0,0,0,.25)'; ellipse(g, X + 1, Y + 1.6, 4.6, 1.6);
+      g.fillStyle = '#7a5532'; ellipse(g, X, Y, 4.4, 1.7);
+      g.fillStyle = '#f3ecda'; g.beginPath(); g.moveTo(X - 0.2, Y - 1); g.lineTo(X - 0.2, Y - 7); g.lineTo(X + 3.4, Y - 1.4); g.fill();
+      g.fillStyle = GROUP.food; circle(g, X - 2, Y - 1.4, 1.2);
+    }
+  }
+
+  function drawAnimal(g, an, t) {
+    const X = an.x * TS, Y = an.y * TS;
+    const dir = an.tx >= an.x ? 1 : -1;
+    g.fillStyle = 'rgba(0,0,0,.22)'; ellipse(g, X, Y + 2, 3.2, 1.2);
+    g.fillStyle = '#8b5d36'; ellipse(g, X, Y, 3.2, 1.9);
+    g.fillStyle = '#d9c3a3'; ellipse(g, X - dir * 0.3, Y + 0.8, 2, 0.7);
+    g.fillStyle = '#7a5030'; circle(g, X + dir * 3.2, Y - 1.4, 1.25);
+    g.strokeStyle = '#5a3a20'; g.lineWidth = 0.6;
+    g.beginPath(); g.moveTo(X + dir * 3.2, Y - 2.4); g.lineTo(X + dir * 2.4, Y - 4); g.moveTo(X + dir * 3.6, Y - 2.4); g.lineTo(X + dir * 4.4, Y - 4); g.stroke();
+  }
+
+  function drawTrader(g, tr, t) {
+    const X = tr.x * TS, Y = tr.y * TS;
+    let dx = 1, dy = 0;
+    if (tr.path && tr.pi < tr.path.length) { dx = tr.path[tr.pi] - tr.x; dy = tr.path[tr.pi + 1] - tr.y; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d; }
+    const bx = X - dx * 7, by = Y - dy * 7;
+    g.fillStyle = 'rgba(0,0,0,.25)'; ellipse(g, bx, by + 2.4, 3.8, 1.4);
+    g.fillStyle = '#9b958c'; ellipse(g, bx, by, 3.6, 2.2);
+    g.fillStyle = '#c05a3c'; g.fillRect(bx - 2.6, by - 3.6, 2.4, 2.4); g.fillStyle = '#2f6aa8'; g.fillRect(bx + 0.2, by - 3.6, 2.4, 2.4);
+    g.fillStyle = 'rgba(0,0,0,.28)'; ellipse(g, X, Y + 2.3, 3, 1.2);
+    g.fillStyle = '#efe6d2'; g.beginPath(); g.arc(X, Y, 2.8, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 0.9; g.strokeStyle = 'rgba(18,16,14,.9)'; g.stroke();
+    g.fillStyle = '#7b2f2f'; g.fillRect(X - 2.8, Y - 0.6, 5.6, 1.4);
+    g.fillStyle = SKIN[tr.id % 4]; circle(g, X, Y - 3.6, 1.45);
+  }
+
+  function drawFire(g, b, t) {
+    const cx = b.x * TS + 8, cy = b.y * TS + 8;
+    const f = reduceMotion ? 0.5 : (Math.sin(t * 13) + Math.sin(t * 7.3 + 1)) * 0.25 + 0.5;
+    const glow = g.createRadialGradient(cx, cy, 1, cx, cy, 14);
+    glow.addColorStop(0, `rgba(255,170,70,${0.32 + f * 0.1})`); glow.addColorStop(1, 'rgba(255,170,70,0)');
+    g.fillStyle = glow; circle(g, cx, cy, 14);
+    g.fillStyle = '#e8732a'; ellipse(g, cx, cy - 1.6 - f * 0.6, 2.3, 3 + f * 0.8);
+    g.fillStyle = '#ffd35c'; ellipse(g, cx, cy - 0.8 - f * 0.3, 1.2, 1.7 + f * 0.5);
+    if (reduceMotion) return;
+    for (let k = 0; k < 5; k++) {
+      const ph = (t * 0.22 + k / 5) % 1;
+      g.fillStyle = `rgba(225,225,225,${(1 - ph) * 0.3})`;
+      circle(g, cx + Math.sin(t * 0.9 + k * 2) * 2.5 + ph * 6, cy - 5 - ph * 22, 1.6 + ph * 3.4);
+    }
+  }
+
+  function render(t) {
+    if (!S) return;
+    const g = ctx;
+    const k = canvas.width / viewW();
+    g.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k);
+    g.imageSmoothingEnabled = true;
+    g.drawImage(base, 0, 0, MW, MH);
+    g.drawImage(wearC, 0, 0, MW, MH);
+    for (const b of S.buildings) if (b.kind === 'aqueduct') drawAqueductLine(g, b);
+    const forum = S.buildings.find(b => b.kind === 'forum' && b.done);
+    if (forum) drawWalls(g);
+    const blds = S.buildings.slice().sort((a, b) => (a.kind === 'forum') - (b.kind === 'forum') || a.y - b.y);
+    for (const b of blds) drawBuilding(g, b, t);
+    for (const an of S.animals) drawAnimal(g, an, t);
+    drawBoats(g, t);
+    const ppl = S.people.slice().sort((a, b) => a.y - b.y);
+    for (const p of ppl) drawPerson(g, p, t);
+    for (const tr of S.traders) drawTrader(g, tr, t);
+    for (const b of S.buildings) if (b.kind === 'hearth' && b.done) drawFire(g, b, t);
+    if (S.ev.harsh && S.season === 3) { g.fillStyle = 'rgba(230,238,245,.12)'; g.fillRect(0, 0, MW, MH); }
+    // selection
+    if (sel) {
+      let x = null, y = null;
+      if (sel.k === 'p') { const p = S.people.find(q => q.id === sel.id); if (p) { x = p.x * TS; y = p.y * TS - 1.5; } }
+      if (sel.k === 'b') { const b = S.buildings.find(q => q.id === sel.id); if (b) { x = b.x * TS + 8; y = b.y * TS + 8; } }
+      if (sel.k === 't') { x = (sel.id % W) * TS + 8; y = ((sel.id / W) | 0) * TS + 8; }
+      if (x !== null) {
+        const pulse = reduceMotion ? 0 : Math.sin(t * 4) * 0.8;
+        const rr = (sel.k === 'p' ? 6 : 10) + pulse;
+        g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.95)'; g.beginPath(); g.arc(x, y, rr, 0, Math.PI * 2); g.stroke();
+        g.lineWidth = 1.5; g.strokeStyle = '#2f4fa2'; g.beginPath(); g.arc(x, y, rr, 0, Math.PI * 2); g.stroke();
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------- picking */
+  function toMap(ev) {
+    const r = canvas.getBoundingClientRect();
+    return [cam.x + (ev.clientX - r.left) / r.width * viewW(), cam.y + (ev.clientY - r.top) / r.height * viewH()];
+  }
+  function pick(mx, my) {
+    let best = null, bd = 6 + 4 / cam.z;
+    for (const p of S.people) {
+      const d = Math.hypot(p.x * TS - mx, p.y * TS - 2 - my);
+      if (d < bd) { bd = d; best = { k: 'p', id: p.id }; }
+    }
+    if (best) return best;
+    const tx = Math.floor(mx / TS), ty = Math.floor(my / TS);
+    if (tx < 0 || ty < 0 || tx >= W || ty >= H) return null;
+    const i = ty * W + tx;
+    if (S.occ[i]) return { k: 'b', id: S.occ[i] };
+    return { k: 't', id: i };
+  }
+  const ptrs = new Map();
+  let drag = null;
+  canvas.addEventListener('pointerdown', ev => {
+    if (!S) return;
+    canvas.setPointerCapture(ev.pointerId);
+    ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    drag = { moved: ptrs.size > 1, sx: ev.clientX, sy: ev.clientY, cx: cam.x, cy: cam.y, pinch: null };
+    if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()];
+      drag.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.z };
+    }
+  });
+  canvas.addEventListener('pointermove', ev => {
+    if (!drag || !ptrs.has(ev.pointerId)) return;
+    ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    const r = canvas.getBoundingClientRect();
+    if (ptrs.size >= 2 && drag.pinch) {
+      const [a, b] = [...ptrs.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const mid = { clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 };
+      const [mx, my] = toMap(mid);
+      zoomAt(drag.pinch.z * d / Math.max(1, drag.pinch.d) / cam.z, mx, my);
+      drag.moved = true;
+      return;
+    }
+    const dx = ev.clientX - drag.sx, dy = ev.clientY - drag.sy;
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    drag.moved = true;
+    canvas.classList.add('drag');
+    cam.x = drag.cx - dx / r.width * viewW();
+    cam.y = drag.cy - dy / r.height * viewH();
+    clampCam();
+  });
+  function endPointer(ev) {
+    if (!ptrs.has(ev.pointerId)) return;
+    ptrs.delete(ev.pointerId);
+    canvas.classList.remove('drag');
+    if (drag && !drag.moved && ev.type === 'pointerup' && !ptrs.size) {
+      const [mx, my] = toMap(ev);
+      sel = pick(mx, my);
+      renderInspect();
+    }
+    if (!ptrs.size) drag = null;
+    else if (drag) { const [a] = [...ptrs.values()]; drag.sx = a.x; drag.sy = a.y; drag.cx = cam.x; drag.cy = cam.y; drag.pinch = null; }
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('wheel', ev => {
+    if (!(ev.ctrlKey || ev.metaKey)) return;
+    ev.preventDefault();
+    const [mx, my] = toMap(ev);
+    zoomAt(Math.exp(-ev.deltaY * 0.0025), mx, my);
+  }, { passive: false });
+  $('#zoomIn').addEventListener('click', () => zoomAt(1.4, cam.x + viewW() / 2, cam.y + viewH() / 2));
+  $('#zoomOut').addEventListener('click', () => zoomAt(1 / 1.4, cam.x + viewW() / 2, cam.y + viewH() / 2));
+  $('#zoomCamp').addEventListener('click', () => homeCam());
+  let hoverT = 0;
+  canvas.addEventListener('mousemove', ev => {
+    const now = performance.now();
+    if (!S || drag || now - hoverT < 60) return;
+    hoverT = now;
+    const [mx, my] = toMap(ev);
+    const hit = pick(mx, my);
+    canvas.classList.toggle('over', !!hit && hit.k !== 't');
+  });
+
+  /* --------------------------------------------------------------- panels */
+  const fmt = n => Math.round(n).toLocaleString('en-US');
+  const yrLabel = y => `Yr ${Math.floor(y) + 1}`;
+  const SEASON_SHORT = ['Spr', 'Sum', 'Aut', 'Win'];
+  const plural = (n, w, pl) => `${n} ${n === 1 ? w : (pl || w + 's')}`;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function statusHtml(level, text) {
+    const col = { good: 'var(--good)', warn: 'var(--warn)', crit: 'var(--crit)' }[level];
+    const icon = level === 'good'
+      ? `<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5.5" fill="${col}"/><path d="M3.4 6.2l1.8 1.8 3.4-3.6" stroke="#fff" stroke-width="1.6" fill="none"/></svg>`
+      : level === 'warn'
+        ? `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 .8l5.4 10H.6z" fill="${col}"/><path d="M6 4.4v3M6 8.6v.6" stroke="#222" stroke-width="1.3"/></svg>`
+        : `<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5.5" fill="${col}"/><path d="M4 4l4 4M8 4l-4 4" stroke="#fff" stroke-width="1.5"/></svg>`;
+    return `${icon}<span>${text}</span>`;
+  }
+
+  function updateHeader() {
+    const yearFrac = S.yr % 1;
+    $('#ring').setAttribute('stroke-dashoffset', (100.53 * (1 - yearFrac)).toFixed(2));
+    $('#ringTxt').textContent = SEASON_SHORT[S.season].slice(0, 2);
+    $('#yearLbl').textContent = Math.floor(S.yr) + 1;
+    $('#seasonLbl').textContent = SEASONS[S.season];
+    $('#eraLbl').textContent = S.won ? `City of ${S.cityName}` : ERAS[S.era].name;
+  }
+
+  function updateChips() {
+    const chips = [];
+    if (S.hunger > 0) chips.push(['var(--crit)', 'Famine']);
+    if (S.ev.drought && S.season < 3) chips.push(['var(--warn)', 'Drought']);
+    if (S.ev.harsh && S.season === 3) chips.push(['#a9c7e8', 'Bitter winter']);
+    if (S.ev.bounty && S.season === 2) chips.push(['var(--good)', 'Bountiful autumn']);
+    if (S.traders.length) chips.push(['#e0c48a', 'Caravan in camp']);
+    const html = chips.map(([c, t]) => `<span class="chip"><i style="background:${c}"></i>${t}</span>`).join('');
+    const el = $('#chips');
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+
+  function updateTribe(v) {
+    $('#pop').textContent = v.pop;
+    const adults = v.pop - v.kids - v.elders;
+    $('#popBreak').textContent = `${plural(adults, 'adult')} · ${plural(v.kids, 'child', 'children')} · ${plural(v.elders, 'elder')}`;
+    $('#beds').textContent = `${v.pop} / ${v.cap}`;
+    $('#bedsBar').style.width = Math.min(100, v.pop / v.cap * 100) + '%';
+    $('#food').textContent = fmt(S.stock.food);
+    const seasons = S.stock.food / Math.max(0.01, v.consumption / 4);
+    let st;
+    if (S.hunger > 0) st = statusHtml('crit', 'Starving');
+    else if (seasons < 1) st = statusHtml('crit', 'Under a season left');
+    else if (seasons < 2) st = statusHtml('warn', `${Math.floor(seasons)} season stored`);
+    else if (seasons < 8) st = statusHtml('good', `${Math.floor(seasons)} seasons stored`);
+    else st = statusHtml('good', `${Math.floor(seasons / 4)} years stored`);
+    $('#foodStatus').innerHTML = st;
+    const show = [
+      ['Wood', 'wood', S.known.fire !== undefined || S.stock.wood > 0],
+      ['Stone', 'stone', S.stock.stone > 0 || S.known.shelter !== undefined],
+      ['Clay', 'clay', S.stock.clay > 0 || S.known.basketry !== undefined && S.known.fire !== undefined],
+      ['Hides', 'hides', S.known.spear !== undefined],
+      ['Copper', 'copper', S.reveal.copper || S.stock.copper > 0],
+      ['Tin', 'tin', S.reveal.tin || S.stock.tin > 0],
+      ['Iron', 'iron', S.reveal.iron || S.stock.iron > 0],
+    ].filter(r => r[2]);
+    const html = show.map(([l, k]) => `<li><span>${l}</span><b>${fmt(Math.max(0, S.stock[k]))}</b></li>`).join('');
+    const el = $('#mats');
+    el.hidden = !show.length;
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+
+  const GROUPS = [
+    { id: 'food', label: 'Food', jobs: ['forage', 'hunt', 'fish', 'farm', 'herd'] },
+    { id: 'mat', label: 'Materials', jobs: ['wood', 'stone', 'clay', 'copper', 'tin', 'iron'] },
+    { id: 'build', label: 'Building', jobs: ['build'] },
+    { id: 'know', label: 'Knowledge', jobs: ['sage'] },
+  ];
+  function updateWork(v) {
+    const rows = [];
+    const plurals = { forage: 'foragers', hunt: 'hunters', fish: 'fishers', farm: 'farmers', herd: 'herders', wood: 'woodcutters', stone: 'quarriers', clay: 'clay diggers', copper: 'copper miners', tin: 'tin miners', iron: 'iron miners', build: 'builders' };
+    for (const g of GROUPS) {
+      let n = 0;
+      const det = [];
+      for (const j of g.jobs) {
+        const c = v.jobs[j] || 0;
+        if (!c) continue;
+        n += c;
+        const word = j === 'sage' ? v.sageLabel.toLowerCase() + (c === 1 ? '' : 's') : (c === 1 ? JOBS[j].label.toLowerCase() : plurals[j]);
+        det.push(`${c} ${word}`);
+      }
+      rows.push({ id: g.id, label: g.label, n, det: det.join(' · '), color: `var(--g-${g.id})` });
+    }
+    const working = rows.reduce((a, r) => a + r.n, 0);
+    const resting = Math.max(0, v.pop - v.kids - v.elders - working);
+    const dep = [plural(v.kids, 'child', 'children'), plural(v.elders, 'elder')];
+    if (resting) dep.push(`${resting} resting while the stores are full`);
+    rows.push({ id: 'dep', label: 'Not working', n: v.kids + v.elders + resting, det: dep.join(' · '), color: 'var(--g-dep)' });
+    const stack = rows.filter(r => r.n > 0).map(r => `<i style="flex-grow:${r.n};background:${r.color}" title="${r.label}: ${r.n}"></i>`).join('');
+    const el = $('#stack');
+    if (el.dataset.k !== stack) { el.innerHTML = stack; el.dataset.k = stack; }
+    const list = rows.map(r => `<li><span class="dot" style="background:${r.color}"></span><span class="nm">${r.label}</span><span class="n">${r.n}</span>${r.det ? `<span class="det">${esc(r.det)}</span>` : ''}</li>`).join('');
+    const wl = $('#workList');
+    if (wl.dataset.k !== list) { wl.innerHTML = list; wl.dataset.k = list; }
+  }
+
+  function updateResearch() {
+    const id = S.focus;
+    const nameEl = $('#rsName'), meta = $('#rsMeta'), note = $('#rsNote'), wait = $('#rsWait');
+    if (!id) {
+      const all = TECHS.every(t => S.known[t.id] !== undefined);
+      nameEl.textContent = all ? 'Everything is known' : 'Nothing within reach';
+      $('#rsBar').style.width = all ? '100%' : '0%';
+      meta.textContent = all ? `${TECHS.length} discoveries, all made.` : 'The tribe needs other knowledge or resources first.';
+      note.innerHTML = ''; wait.hidden = true;
+      return;
+    }
+    const t = TECH[id];
+    const pr = S.progress[id] || 0;
+    nameEl.textContent = t.name;
+    $('#rsBar').style.width = Math.min(100, pr / t.cost * 100) + '%';
+    const left = Math.max(0, t.cost - pr);
+    const yrs = S.kRate > 0 ? left / S.kRate : Infinity;
+    const eta = left <= 0 ? 'ready' : yrs < 1 ? 'under a year' : yrs < 1.5 ? 'about a year' : `about ${Math.round(yrs)} years`;
+    meta.textContent = `${fmt(pr)} of ${fmt(t.cost)} lore · +${S.kRate.toFixed(S.kRate < 100 ? 1 : 0)} a year · ${eta}`;
+    if (S.waiting === id) {
+      const st = Sim.techState(S, id);
+      const need = st.short ? Object.entries(st.short).map(([k, n]) => `${n} more ${k}`).join(', ') : '';
+      wait.hidden = false;
+      wait.innerHTML = statusHtml('warn', `Waiting for ${need || 'materials'}${S.side ? `. Meanwhile: ${TECH[S.side].name}` : ''}`);
+    } else wait.hidden = true;
+    const html = S.auto
+      ? `<span>The elders chose this.</span><button type="button" class="linkish" data-go="strata">Choose instead</button>`
+      : `<span>Your choice.</span><button type="button" class="linkish" data-auto="1">Let the elders choose</button>`;
+    if (note.dataset.k !== html) { note.innerHTML = html; note.dataset.k = html; }
+  }
+  $('#rsNote').addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    if (b.dataset.auto) { Sim.setAuto(S); refreshStrata(); updateResearch(); }
+    if (b.dataset.go) {
+      const first = document.querySelector('.find[data-state="open"]');
+      $('#strata').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+      if (first) { showTech(first.dataset.id); setTimeout(() => first.focus({ preventScroll: true }), 300); }
+    }
+  });
+
+  /* ------------------------------------------------------------- chart */
+  const chartEl = $('#chart');
+  let chartW = 0;
+  const niceMax = v => { const steps = [10, 20, 25, 50, 100, 150, 200, 250, 300, 400, 500]; for (const s of steps) if (v <= s) return s; return Math.ceil(v / 100) * 100; };
+  function drawChart() {
+    const w = chartEl.clientWidth;
+    if (!w) return;
+    chartW = w;
+    const h = 132, padL = 30, padR = 30, padT = 20, padB = 20;
+    const hist = S.hist;
+    const maxY = niceMax(Math.max(10, ...hist.map(d => d.pop)));
+    const maxX = Math.max(10, Math.ceil(S.yr / 10) * 10);
+    const sx = y => padL + y / maxX * (w - padL - padR);
+    const sy = v => h - padB - v / maxY * (h - padT - padB);
+    let line = '', area = '';
+    hist.forEach((d, k) => { line += `${k ? 'L' : 'M'}${sx(d.y).toFixed(1)},${sy(d.pop).toFixed(1)}`; });
+    if (hist.length) area = `${line}L${sx(hist[hist.length - 1].y).toFixed(1)},${sy(0)}L${sx(hist[0].y).toFixed(1)},${sy(0)}Z`;
+    const grid = [0, maxY / 2, maxY].map(v => `<line x1="${padL}" x2="${w - padR}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--line)" stroke-width="1"/><text x="${padL - 6}" y="${sy(v) + 4}" text-anchor="end" font-size="10.5" fill="var(--muted)" font-family="var(--font-data)">${v}</text>`).join('');
+    const xstep = maxX <= 20 ? 5 : maxX <= 60 ? 10 : maxX <= 150 ? 25 : 50;
+    let xt = '';
+    for (let y = 0; y <= maxX; y += xstep) xt += `<text x="${sx(y)}" y="${h - 4}" text-anchor="middle" font-size="10.5" fill="var(--muted)" font-family="var(--font-data)">${y}</text>`;
+    let marks = '', lastX = -99;
+    for (const m of S.eraMarks) {
+      if (!m.era) continue;
+      const x = sx(m.yr);
+      marks += `<line x1="${x}" x2="${x}" y1="${padT - 6}" y2="${h - padB}" stroke="var(--ink-2)" stroke-width="1" stroke-opacity=".45"/>`;
+      if (x - lastX > 54) { marks += `<text x="${x + 3}" y="${padT - 9}" font-size="10.5" fill="var(--ink-2)" font-family="var(--font-body)">${ERAS[m.era].name.replace(' Age', '')}</text>`; lastX = x; }
+    }
+    const last = hist[hist.length - 1];
+    const end = last ? `<circle cx="${sx(last.y)}" cy="${sy(last.pop)}" r="4" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/><text x="${sx(last.y) + 7}" y="${sy(last.pop) + 4}" font-size="11.5" font-weight="500" fill="var(--ink)" font-family="var(--font-data)">${last.pop}</text>` : '';
+    chartEl.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">${grid}${xt}${marks}<path d="${area}" fill="var(--accent)" fill-opacity=".1"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${end}<g class="hover" visibility="hidden"><line y1="${padT}" y2="${h - padB}" stroke="var(--ink-2)" stroke-width="1"/><circle r="4" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/></g><rect x="${padL}" y="0" width="${w - padL - padR}" height="${h}" fill="transparent"/></svg><div class="tip" hidden></div><p class="sr">Population ${last ? last.pop : 0} in year ${Math.floor(S.yr) + 1}, peak ${S.peak}.</p>`;
+    chartEl._scale = { sx, sy, maxX, padL, padR, w };
+  }
+  chartEl.addEventListener('mousemove', ev => {
+    const sc = chartEl._scale;
+    if (!sc || !S.hist.length) return;
+    const r = chartEl.getBoundingClientRect();
+    const x = ev.clientX - r.left;
+    const yr = (x - sc.padL) / (sc.w - sc.padL - sc.padR) * sc.maxX;
+    let best = S.hist[0];
+    for (const d of S.hist) if (Math.abs(d.y - yr) < Math.abs(best.y - yr)) best = d;
+    const g = chartEl.querySelector('.hover');
+    const px = sc.sx(best.y), py = sc.sy(best.pop);
+    g.setAttribute('visibility', 'visible');
+    g.querySelector('line').setAttribute('x1', px); g.querySelector('line').setAttribute('x2', px);
+    g.querySelector('circle').setAttribute('cx', px); g.querySelector('circle').setAttribute('cy', py);
+    const tip = chartEl.querySelector('.tip');
+    tip.hidden = false;
+    tip.style.left = Math.max(50, Math.min(sc.w - 50, px)) + 'px';
+    tip.style.top = Math.max(-8, py - 34) + 'px';
+    tip.textContent = `Year ${Math.floor(best.y) + 1}, ${SEASONS[Math.round((best.y % 1) * 4) % 4]} · ${best.pop} people`;
+  });
+  chartEl.addEventListener('mouseleave', () => {
+    const g = chartEl.querySelector('.hover'), tip = chartEl.querySelector('.tip');
+    if (g) g.setAttribute('visibility', 'hidden');
+    if (tip) tip.hidden = true;
+  });
+
+  /* ------------------------------------------------------------- strata */
+  function buildStrata() {
+    const html = [];
+    for (let e = ERAS.length - 1; e >= 0; e--) {
+      const gate = TECHS.find(t => t.gate === e);
+      html.push(`<div class="layer" data-era="${e}"><div class="layer-label"><b>${ERAS[e].name}</b><span>${ERAS[e].real}</span><em>${gate ? `Opens with ${gate.name}` : 'Where every story starts'}</em></div><div class="finds">`);
+      for (const t of TECHS.filter(x => x.era === e)) {
+        html.push(`<button type="button" class="find${t.gate ? ' gate' : ''}" data-id="${t.id}" data-state="locked"><span class="nm">${t.name}</span><span class="st"></span><i class="prog"></i></button>`);
+      }
+      html.push('</div></div>');
+    }
+    $('#layers').innerHTML = html.join('');
+  }
+  function refreshStrata() {
+    for (const el of document.querySelectorAll('.find')) {
+      const id = el.dataset.id, t = TECH[id];
+      const st = Sim.techState(S, id);
+      let state = st.s;
+      if (state === 'open' && S.focus === id) state = 'focus';
+      el.dataset.state = state;
+      let label;
+      if (state === 'known') label = `Yr ${Math.floor(st.yr) + 1}`;
+      else if (state === 'focus') label = `${Math.floor(Math.min(1, st.pr / t.cost) * 100)}% studied`;
+      else if (state === 'blocked') label = 'Needs resources';
+      else if (state === 'locked') label = `${fmt(t.cost)} lore`;
+      else label = st.pr > 0 ? `${Math.floor(st.pr / t.cost * 100)}% · ${fmt(t.cost)}` : `${fmt(t.cost)} lore`;
+      const stEl = el.querySelector('.st');
+      if (stEl.textContent !== label) stEl.textContent = label;
+      el.style.setProperty('--p', state === 'known' ? 0 : Math.min(1, (st.pr || 0) / Math.max(1, t.cost)).toFixed(3));
+      el.setAttribute('aria-current', focusTech === id ? 'true' : 'false');
+      el.setAttribute('aria-label', `${t.name}: ${state === 'known' ? 'known' : state === 'focus' ? 'being studied' : state === 'open' ? 'can be studied' : state === 'blocked' ? 'needs resources' : 'locked'}`);
+    }
+    for (const el of document.querySelectorAll('.layer')) {
+      const e = +el.dataset.era;
+      el.classList.toggle('current', e === S.era);
+      el.classList.toggle('future', e > S.era);
+    }
+    if (focusTech) showTech(focusTech, true);
+  }
+  function showTech(id, quiet) {
+    focusTech = id;
+    const t = TECH[id], st = Sim.techState(S, id);
+    const reqs = t.req.map(r => `<li><span class="${S.known[r] !== undefined ? 'ok' : 'no'}">${S.known[r] !== undefined ? '✓' : '–'}</span>${TECH[r].name}</li>`).join('');
+    const mats = t.mats ? Object.entries(t.mats).map(([k, n]) => `<li><span class="${S.stock[k] >= n ? 'ok' : 'no'}">${S.stock[k] >= n ? '✓' : '–'}</span>${n} ${k}</li>`).join('') : '';
+    const cond = t.cond ? `<li><span class="${st.s === 'blocked' ? 'no' : 'ok'}">${st.s === 'blocked' ? '–' : '✓'}</span>${Sim.COND_TEXT[t.cond].replace('Needs ', '')}</li>` : '';
+    let state, action = '';
+    if (st.s === 'known') state = `Learned in year ${Math.floor(st.yr) + 1}${S.by[id] ? `, first sparked by ${esc(S.by[id])}` : ''}.`;
+    else if (st.s === 'locked') state = 'Out of reach until the discoveries above are made.';
+    else if (st.s === 'blocked') state = `${st.why}.`;
+    else if (S.focus === id) state = `Being studied now: ${Math.floor(Math.min(1, st.pr / t.cost) * 100)}%.`;
+    else { state = st.pr > 0 ? `${Math.floor(st.pr / t.cost * 100)}% studied so far.` : 'Ready to be studied.'; action = `<button type="button" class="btn primary" data-study="${id}">Study this next</button>`; }
+    const html = `<div class="eyebrow">${ERAS[t.era].name}${t.gate ? ' · opens the age' : ''}</div><h3>${t.name}</h3><p>${esc(t.desc)}</p>` +
+      (reqs || mats || cond ? `<ul>${reqs}${cond}${mats}</ul>` : '') +
+      `<div class="state">${state}${t.cost ? ` Costs ${fmt(t.cost)} lore.` : ''}</div>${action}`;
+    const d = $('#detail');
+    if (d.dataset.k !== html) { d.innerHTML = html; d.dataset.k = html; }
+    if (!quiet) for (const el of document.querySelectorAll('.find')) el.setAttribute('aria-current', el.dataset.id === id ? 'true' : 'false');
+  }
+  $('#layers').addEventListener('click', ev => {
+    const b = ev.target.closest('.find');
+    if (b) showTech(b.dataset.id);
+  });
+  $('#layers').addEventListener('mouseover', ev => {
+    const b = ev.target.closest('.find');
+    if (b && window.matchMedia('(hover: hover)').matches) showTech(b.dataset.id);
+  });
+  $('#detail').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-study]');
+    if (!b) return;
+    if (Sim.setFocus(S, b.dataset.study)) { refreshStrata(); updateResearch(); }
+  });
+
+  /* ------------------------------------------------------------ chronicle */
+  const CAT = { tech: 'disc', era: 'disc', idea: 'disc', people: 'ppl', death: 'ppl', year: 'ppl', event: 'evt', build: 'evt', trade: 'evt' };
+  function entryHtml(e) {
+    return `<li class="c-${e.c}" data-f="${CAT[e.c] || 'evt'}"><span class="when">${yrLabel(e.y)} ${SEASON_SHORT[Math.floor((e.y % 1) * 4) % 4]}</span><span class="mk" aria-hidden="true"></span><span class="tx">${esc(e.t)}</span></li>`;
+  }
+  function renderLog(full) {
+    const ol = $('#log');
+    const n = S.logN || S.log.length;
+    if (full) {
+      const items = S.log.filter(e => filter === 'all' || CAT[e.c] === filter).slice(-220).reverse();
+      ol.innerHTML = items.length ? items.map(entryHtml).join('') : '<li class="log-empty">Nothing yet.</li>';
+      shownLogN = n;
+      return;
+    }
+    if (n === shownLogN) return;
+    const fresh = S.log.filter(e => e.n > shownLogN && (filter === 'all' || CAT[e.c] === filter));
+    shownLogN = n;
+    if (!fresh.length) return;
+    const empty = ol.querySelector('.log-empty');
+    if (empty) empty.remove();
+    ol.insertAdjacentHTML('afterbegin', fresh.reverse().map(entryHtml).join(''));
+    while (ol.children.length > 220) ol.lastElementChild.remove();
+  }
+  for (const b of document.querySelectorAll('[data-f]')) {
+    if (b.tagName !== 'BUTTON') continue;
+    b.addEventListener('click', () => {
+      filter = b.dataset.f;
+      for (const o of document.querySelectorAll('button[data-f]')) o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+      renderLog(true);
+    });
+  }
+
+  /* --------------------------------------------------------------- ticker */
+  let tickN = 0;
+  function feedTicker() {
+    const n = S.logN || 0;
+    if (n === tickN) return;
+    const fresh = S.log.filter(e => e.n > tickN && ['tech', 'era', 'idea', 'event', 'build', 'trade'].includes(e.c));
+    tickN = n;
+    const now = performance.now();
+    for (const e of fresh.slice(-3)) ticker.push({ e, at: now });
+    while (ticker.length > 3) ticker.shift();
+    drawTicker();
+  }
+  function drawTicker() {
+    const el = $('#ticker');
+    const now = performance.now();
+    const html = ticker.map(({ e, at }) => {
+      const old = now - at > 9000;
+      const text = e.c === 'tech' ? `<b>${esc(e.t.split('. ')[0])}.</b> ${esc(e.t.split('. ').slice(1).join('. '))}` : esc(e.t);
+      return `<div class="${old ? 'old' : ''}" data-n="${e.n}">${text}</div>`;
+    }).join('');
+    if (el.dataset.k !== html) { el.innerHTML = html; el.dataset.k = html; }
+  }
+
+  /* --------------------------------------------------------------- inspect */
+  function renderInspect() {
+    const box = $('#inspect');
+    if (!sel || !S) { box.hidden = true; box.dataset.k = ''; return; }
+    let html = '';
+    if (sel.k === 'p') {
+      const p = S.people.find(q => q.id === sel.id);
+      if (p) {
+        const info = Sim.personInfo(S, p);
+        const col = personColor(p);
+        html = `<h3>${esc(p.name)}</h3><div class="role"><span class="dot" style="background:${col}"></span>${info.role} · ${Math.floor(info.age)} years old</div>` +
+          `<div class="doing">${esc(info.doing || 'Resting')}</div><dl>` +
+          (info.parents.length ? `<dt>Parents</dt><dd>${esc(info.parents.join(' and '))}</dd>` : '') +
+          `<dt>Children</dt><dd>${p.kids}</dd></dl>` +
+          (p.deeds.length ? `<ul>${p.deeds.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : '');
+      } else if (S.dead[sel.id]) {
+        const d = S.dead[sel.id];
+        html = `<h3>${esc(d.name)}</h3><div class="role">${esc(d.cause[0].toUpperCase() + d.cause.slice(1))} at ${Math.floor(d.died - d.born)}, in year ${Math.floor(d.died) + 1}.</div>` +
+          `<dl><dt>Children</dt><dd>${d.kids}</dd></dl>` + (d.deeds.length ? `<ul>${d.deeds.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
+      }
+    } else if (sel.k === 'b') {
+      const b = S.buildings.find(q => q.id === sel.id);
+      if (b) {
+        const def = BUILD[b.up || b.kind];
+        let st;
+        if (!b.done || b.up) {
+          const cost = Object.entries(def.cost).map(([k, n]) => `${n} ${k}`).join(', ');
+          st = b.paid ? `${b.up ? 'Being rebuilt as a ' + def.name.toLowerCase() : 'Under construction'}: ${Math.floor(b.prog / b.need * 100)}%` : `Waiting for materials: ${cost}`;
+        } else if (b.kind === 'farm') {
+          st = S.season === 3 ? 'Lying fallow for winter' : b.harv ? 'Harvested this year' : `Crop ${Math.floor((b.growth || 0) * 100)}% grown`;
+        } else if (b.kind === 'pen') st = `${b.n} animals`;
+        else if (def.house) st = `Sleeps ${def.house}`;
+        else st = 'In use';
+        html = `<h3>${BUILD[b.kind].name}${b.up ? '' : ''}</h3><div class="role">${esc(st)}</div><dl><dt>Built</dt><dd>${b.done ? 'Year ' + (Math.floor(b.t0) + 1) : 'Not yet'}</dd></dl>`;
+      }
+    } else if (sel.k === 't') {
+      const i = sel.id, t = S.ter[i];
+      const names = ['Deep water', 'Shallows', 'River', 'Sand', 'Grassland', 'Woodland', 'Hills', 'Mountains'];
+      let name = names[t];
+      if (t === T.FOREST && S.wood[i] < 3) name = 'Cleared woodland';
+      const facts = [];
+      if (S.woodMax[i] > 0) facts.push(`${Math.floor(S.wood[i])} wood`);
+      if (Sim.FOOD_MAX[t] > 0) facts.push(S.food[i] >= 1.5 ? 'Berries and roots to gather' : 'Picked over');
+      if (t === T.SHALLOW || t === T.RIVER) facts.push(S.fish[i] >= 2 ? 'Fish in the water' : 'Fished out for now');
+      if (t === T.HILLS) facts.push('Stone to quarry');
+      if (S.ore[i] && S.reveal[Sim.ORES[S.ore[i] - 1]]) facts.push(`${Sim.ORES[S.ore[i] - 1][0].toUpperCase() + Sim.ORES[S.ore[i] - 1].slice(1)} ore`);
+      if (S.clay[i]) facts.push('Clay bank');
+      if (S.fertile[i]) facts.push('Fertile river soil');
+      if (i === S.camp) facts.push('The tribe’s camp');
+      html = `<h3>${name}</h3>${facts.length ? `<ul>${facts.map(f => `<li>${f}</li>`).join('')}</ul>` : '<div class="role">Nothing of use here.</div>'}`;
+    }
+    if (!html) { box.hidden = true; return; }
+    html = `<button type="button" class="x" aria-label="Close">&times;</button>${html}`;
+    if (box.dataset.k !== html) { box.innerHTML = html; box.dataset.k = html; }
+    box.hidden = false;
+  }
+  $('#inspect').addEventListener('click', ev => { if (ev.target.closest('.x')) { sel = null; renderInspect(); } });
+
+  /* ------------------------------------------------------------- moments */
+  let bannerTimer = 0;
+  function showBanner(eyebrow, title, line) {
+    const el = $('#banner');
+    el.innerHTML = `<div><div class="eyebrow">${esc(eyebrow)}</div><div class="title">${esc(title)}</div><div class="line">${esc(line)}</div></div>`;
+    el.classList.add('show');
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => el.classList.remove('show'), 5200);
+  }
+  function drainFx() {
+    while (S.fx.length) {
+      const f = S.fx.shift();
+      if (f.k === 'era') {
+        const e = ERAS[f.era];
+        showBanner(`Year ${Math.floor(S.yr) + 1} · in our history ${e.real}`, `The ${e.name}${e.name === 'Classical' ? ' age' : ''}`, e.intro.replace(/^The [^.]+ begins\. /, ''));
+      }
+      if (f.k === 'tech') { if (focusTech) showTech(focusTech, true); }
+      if (f.k === 'won') showEnd('won');
+      if (f.k === 'over') showEnd('over');
+    }
+  }
+
+  function notables() {
+    const all = [];
+    for (const id in S.dead) all.push(S.dead[id]);
+    for (const p of S.people) all.push({ name: p.name, deeds: p.deeds, kids: p.kids, living: true });
+    const n = d => new Set(d.deeds.filter(x => x.startsWith('Inspired')).map(x => x.replace(/ \(year \d+\)/, ''))).size;
+    return all.filter(d => n(d) > 0).sort((a, b) => n(b) - n(a)).slice(0, 5);
+  }
+  function showEnd(kind) {
+    const el = $('#endcard');
+    const years = Math.floor(S.yr) + 1;
+    const learned = Object.keys(S.known).length;
+    const ideas = d => [...new Set(d.deeds.filter(x => x.startsWith('Inspired')).map(x => x.replace('Inspired ', '').replace(/ \(year \d+\)/, '')))];
+    const people = notables().map(d => `<li><b>${esc(d.name)}</b>${d.living ? ' (living)' : ''}: ${esc(ideas(d).join(', '))}</li>`).join('');
+    const head = kind === 'won'
+      ? `<div class="eyebrow">Year ${years}</div><h2>The city of ${esc(S.cityName)}</h2><p>From ${12} people around a flint fire to ${S.people.length} inside stone walls. The tribe's story ends here and the city's begins.</p>`
+      : `<div class="eyebrow">Year ${years}</div><h2>The ${esc(S.tribe)} are gone</h2><p>The last of them died and the hearth went cold. Their land is still there for another people to try.</p>`;
+    el.innerHTML = `<div class="card" role="dialog" aria-modal="true" aria-labelledby="endTitle">${head.replace('<h2>', '<h2 id="endTitle">')}<div class="stats"><div><b>${S.peak}</b><span>peak population</span></div><div><b>${fmt(S.births)}</b><span>born</span></div><div><b>${learned} / ${TECHS.length}</b><span>discoveries</span></div></div>` +
+      (people ? `<h3>Remembered for their ideas</h3><ul>${people}</ul>` : '') +
+      `<div class="actions">${kind === 'won' ? '<button type="button" class="btn" data-end="keep">Keep watching</button>' : ''}<button type="button" class="btn primary" data-end="new">Begin a new world</button></div></div>`;
+    el.hidden = false;
+    lastEnd = kind;
+    const btn = el.querySelector('.btn.primary');
+    if (btn) btn.focus();
+  }
+  $('#endcard').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-end]');
+    if (!b) return;
+    $('#endcard').hidden = true;
+    if (b.dataset.end === 'new') newWorld();
+  });
+
+  /* ------------------------------------------------------------ controls */
+  function setSpeed(v) {
+    speed = v; paused = false;
+    try { localStorage.setItem('f2f-speed', String(v)); } catch (e) { /* ignore */ }
+    syncControls();
+  }
+  function togglePause() { paused = !paused; syncControls(); }
+  function syncControls() {
+    for (const b of document.querySelectorAll('[data-speed]')) b.setAttribute('aria-pressed', !paused && +b.dataset.speed === speed ? 'true' : 'false');
+    const pb = $('#pauseBtn');
+    pb.setAttribute('aria-pressed', paused ? 'true' : 'false');
+    pb.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+    pb.title = paused ? 'Resume (space)' : 'Pause (space)';
+    $('#pauseIco').setAttribute('d', paused ? 'M8 5l11 7-11 7z' : 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z');
+  }
+  for (const b of document.querySelectorAll('[data-speed]')) b.addEventListener('click', () => setSpeed(+b.dataset.speed));
+  $('#pauseBtn').addEventListener('click', togglePause);
+  document.addEventListener('keydown', ev => {
+    if (ev.target.closest && ev.target.closest('input, textarea, select')) return;
+    if (ev.key === ' ' && !(ev.target.closest && ev.target.closest('button'))) { ev.preventDefault(); togglePause(); }
+    const map = { 1: 1, 2: 3, 3: 10, 4: 30 };
+    if (map[ev.key]) setSpeed(map[ev.key]);
+    if (ev.key === 'Escape') { sel = null; renderInspect(); if (!$('#endcard').hidden) $('#endcard').hidden = true; }
+  });
+  let confirmT = 0;
+  $('#newBtn').addEventListener('click', () => {
+    const b = $('#newBtn');
+    if (!b.classList.contains('confirm') && S && !S.over && S.yr > 1) {
+      b.classList.add('confirm'); b.textContent = 'Start over? Click again';
+      clearTimeout(confirmT);
+      confirmT = setTimeout(() => { b.classList.remove('confirm'); b.textContent = 'New world'; }, 3500);
+      return;
+    }
+    b.classList.remove('confirm'); b.textContent = 'New world';
+    newWorld();
+  });
+
+  function newWorld(seed) {
+    seed = seed || (Math.floor(Math.random() * 899999) + 100000);
+    S = Sim.create(seed);
+    try { history.replaceState(null, '', '#w' + seed); } catch (e) { /* ignore */ }
+    resetView();
+  }
+
+  function resetView() {
+    sel = null; focusTech = null; shownLogN = 0; tickN = Math.max(0, (S.logN || 0) - 1); ticker.length = 0;
+    lastHist = -1; lastSeason = -1; lastKnownCount = -1; lastEnd = null;
+    dockWater.clear();
+    $('#endcard').hidden = true;
+    $('#tribeName').textContent = `The ${S.tribe}`;
+    $('#seedLbl').textContent = `world ${S.seed}`;
+    document.title = 'Flint to Forum';
+    qkey.fill(-1);
+    homeCam();
+    lastSeason = S.season;
+    refreshBase(true);
+    refreshWear();
+    renderInspect();
+    renderLog(true);
+    feedTicker();
+    showTech(Sim.TECHS.find(t => t.id === 'fire').id, true);
+    refreshStrata();
+    slowUI();
+    drawChart();
+  }
+
+  /* ------------------------------------------------------------- loop */
+  let uiT = 0, baseT = 0, wearT = 0, last = performance.now();
+  function slowUI() {
+    const v = Sim.view(S);
+    elderAgeCache = v.elderAge;
+    updateHeader(); updateChips(); updateTribe(v); updateWork(v); updateResearch();
+    renderLog(false); feedTicker(); drawTicker(); drainFx(); renderInspect();
+    const kc = Object.keys(S.known).length + (S.focus || '') + Object.values(S.progress).reduce((a, b) => a + Math.floor(b), 0);
+    if (kc !== lastKnownCount) { lastKnownCount = kc; refreshStrata(); }
+    if (S.hist.length !== lastHist || chartEl.clientWidth !== chartW) { lastHist = S.hist.length; drawChart(); }
+  }
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    if (S && !paused && !S.over && document.visibilityState !== 'hidden') Sim.advance(S, dt * speed);
+    if (S) {
+      if (S.season !== lastSeason) { lastSeason = S.season; refreshBase(true); refreshWear(); }
+      if (now - baseT > 400) { baseT = now; refreshBase(false); }
+      if (now - wearT > 900) { wearT = now; refreshWear(); }
+      if (now - uiT > 200) { uiT = now; slowUI(); }
+      render(now / 1000);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('resize', () => { sizeCanvas(); clampCam(); refreshBase(true); if (S) drawChart(); });
+
+  function start(data) {
+    buildStrata();
+    sizeCanvas();
+    let restored = null;
+    try { if (data && data.state) restored = JSON.parse(data.state); } catch (e) { restored = null; }
+    if (restored && restored.ter && restored.people) {
+      S = restored;
+      if (data.speed) speed = data.speed;
+      paused = !!data.paused;
+      resetView();
+      shownLogN = 0; renderLog(true);
+    } else {
+      const m = /^#w(\d{1,9})$/.exec(location.hash || '');
+      newWorld(m ? +m[1] : 0);
+    }
+    syncControls();
+    requestAnimationFrame(t => { last = t; requestAnimationFrame(frame); });
+  }
+
+  const hot = window.claude && window.claude.hot;
+  if (hot && typeof hot.snapshot === 'function') hot.snapshot(() => ({ state: S ? JSON.stringify(S) : null, speed, paused }));
+  if (hot && typeof hot.ready === 'function') hot.ready(start); else start((hot && hot.data) || {});
+})();
+</script>
+</body>
+</html>

@@ -1,5 +1,8 @@
 # Rotating Sphere
 
+> Also in this repository: **[Flint to Forum](tribe/)**, a browser simulation of a small
+> tribe advancing from stone tools to a founded city. Open `tribe/index.html`.
+
 A rotating sphere rendered in a single self-contained `index.html`. No build step, no
 dependencies, no network access — open the file and it runs.
 
